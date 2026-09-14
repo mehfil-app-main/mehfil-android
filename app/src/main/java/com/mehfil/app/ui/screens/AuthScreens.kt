@@ -65,8 +65,8 @@ import com.mehfil.app.ui.theme.Space
 import com.mehfil.app.ui.theme.Type
 import kotlinx.coroutines.launch
 
-const val PRIVACY_URL = "https://github.com/Sanu5/mehfil-android/blob/main/PRIVACY.md"
-const val TERMS_URL = "https://github.com/Sanu5/mehfil-android/blob/main/TERMS.md"
+const val PRIVACY_URL = "https://sanu5.github.io/privacy/"
+const val TERMS_URL = "https://sanu5.github.io/terms/"
 
 @Composable
 fun SplashScreen() {
