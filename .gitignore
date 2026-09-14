@@ -4,3 +4,7 @@ local.properties
 .idea/
 *.iml
 .kotlin/
+google-services.json
+keystore.properties
+*.jks
+*.keystore

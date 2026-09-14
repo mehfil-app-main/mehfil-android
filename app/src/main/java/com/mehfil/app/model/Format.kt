@@ -8,10 +8,14 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlin.math.abs
 
-/** The content model is anchored to Thu 12 Nov 2026 (NOTES "Content model"). */
+/** Calendar helpers. "Today" is real time; the sample season is date-shifted to fit around it. */
 object Cal {
-    val today: LocalDateTime = LocalDateTime.of(2026, 11, 12, 9, 41)
-    val todayDate: LocalDate = today.toLocalDate()
+    val today: LocalDateTime get() = LocalDateTime.now()
+    val todayDate: LocalDate get() = LocalDate.now()
+    fun newId(): String = java.util.UUID.randomUUID().toString().replace("-", "").take(20)
+    /** Season window (Oct–Feb) containing `day`. */
+    fun seasonStart(day: LocalDate): LocalDate = LocalDate.of(if (day.monthValue >= 10) day.year else day.year - 1, 10, 1)
+    fun seasonLabel(day: LocalDate): String { val y = seasonStart(day).year; return "Season $y–${(y + 1).toString().takeLast(2)}" }
 
     fun d(y: Int, m: Int, day: Int): LocalDate = LocalDate.of(y, m, day)
     fun dt(y: Int, m: Int, day: Int, h: Int, min: Int = 0): LocalDateTime = LocalDateTime.of(y, m, day, h, min)
@@ -24,6 +28,7 @@ object Cal {
             val monday = todayDate.minusDays(((todayDate.dayOfWeek.value + 6) % 7).toLong())
             return monday..monday.plusDays(6)
         }
+    /** Next Saturday strictly after today (the wedding-season focal day). */
     val nextSaturday: LocalDate
         get() {
             var d = todayDate.plusDays(1)

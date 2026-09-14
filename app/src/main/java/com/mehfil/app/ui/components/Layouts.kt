@@ -163,9 +163,8 @@ fun StatTile(figure: String, label: String, modifier: Modifier = Modifier, figur
 // MARK: - 03 Event card
 
 @Composable
-fun EventCard(event: Event, client: Client?, paymentState: PaymentState, onClick: () -> Unit, modifier: Modifier = Modifier, compact: Boolean = false) {
+fun EventCard(event: Event, client: Client?, paymentState: PaymentState, onClick: () -> Unit, modifier: Modifier = Modifier, compact: Boolean = false, conflicted: Boolean = false) {
     val m = M
-    val conflicted = event.hasCrewConflict
     Card(modifier, fill = if (conflicted) m.dangerTint else m.surface, onClick = onClick) {
         Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Space.md)) {
             Box(Modifier.width(Dim.edge).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(m.event(event.hue)))
@@ -213,7 +212,7 @@ fun PaymentRow(
         }
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Space.xs)) {
             Text(Fmt.inr(milestone.amount), style = Type.bodyTabularStrong, color = m.text)
-            StatusChip(ChipKind.from(milestone.status))
+            StatusChip(ChipKind.from(milestone.effectiveStatus))
         }
         if (onTrailing != null) IconButton44(trailingIcon, onTrailing, modifier = Modifier.offset(x = Space.sm))
     }

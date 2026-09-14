@@ -58,7 +58,8 @@ enum class Tab(val route: String, val title: String, val icon: ImageVector) {
 /** Route helpers: every pushed destination in the app (spec §2). */
 object Routes {
     const val calendar = "calendar"; const val season = "season"; const val create = "create"; const val inventory = "inventory"
-    const val clients = "clients"; const val enquiry = "enquiry"; const val crew = "crew"
+    const val clients = "clients"; const val crew = "crew"; const val packages = "packages"; const val account = "account"
+    fun enquiry(id: String? = null) = if (id == null) "enquiry/new" else "enquiry/$id"
     fun day(d: LocalDate) = "day/$d"
     fun event(id: String) = "event/$id"
     fun runsheet(id: String) = "runsheet/$id"
@@ -141,8 +142,10 @@ fun MehfilApp(store: AppStore) {
                 composable("item/{id}") { ItemDetailScreen(store, nav, it.arguments!!.getString("id")!!) }
                 composable(Routes.clients) { ClientListScreen(store, nav) }
                 composable("shared/{id}") { SharedEventPageScreen(store, nav, it.arguments!!.getString("id")!!) }
-                composable(Routes.enquiry) { EnquiryIntakeScreen(store, nav) }
+                composable("enquiry/{id}") { EnquiryIntakeScreen(store, nav, it.arguments!!.getString("id")!!.takeIf { id -> id != "new" }) }
                 composable(Routes.crew) { CrewListScreen(store, nav, pushed = true) }
+                composable(Routes.packages) { PackagesScreen(store, nav) }
+                composable(Routes.account) { AccountScreen(store, nav) }
             }
             AnimatedVisibility(
                 visible = store.toast != null, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),

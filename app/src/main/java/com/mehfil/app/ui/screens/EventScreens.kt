@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -89,10 +88,11 @@ fun EventListScreen(store: AppStore, nav: Nav) {
     var segment by remember { mutableStateOf(EventSegment.UPCOMING) }
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    val upcoming = store.upcomingEvents.filter { query.isBlank() || it.name.contains(query, true) || it.venue.short.contains(query, true) }
-    val completed = store.completedEvents.filter { query.isBlank() || it.name.contains(query, true) }
+    fun matches(e: Event) = query.isBlank() || e.name.contains(query, true) || e.venue.short.contains(query, true) || store.clientFor(e)?.name?.contains(query, true) == true
+    val upcoming = store.upcomingEvents.filter(::matches)
+    val completed = store.completedEvents.filter(::matches)
     val list = if (segment == EventSegment.COMPLETED) completed else upcoming
-    val groups = list.groupBy { Fmt.monthYear(it.day).substringBefore(' ') }
+    val groups = list.groupBy { Fmt.monthYear(it.day) }
     Box(Modifier.fillMaxSize()) {
         Screen(
             title = "Events", subtitle = if (upcoming.isEmpty()) "Nothing booked yet" else "${upcoming.size} upcoming · ${Fmt.inr(upcoming.sumOf { it.quoted })} booked",
@@ -102,38 +102,38 @@ fun EventListScreen(store: AppStore, nav: Nav) {
             if (searching) InputField("Search", query, { query = it }, placeholder = "Event, client or venue", trailing = Icons.Outlined.Search)
             SegmentedControl(EventSegment.entries, segment, { it.label }, { segment = it })
             when (segment) {
-                EventSegment.ENQUIRY -> EnquiryList(nav)
+                EventSegment.ENQUIRY -> EnquiryList(store, nav)
                 else -> if (groups.isEmpty()) {
                     EmptyState(
                         if (segment == EventSegment.UPCOMING) "No events yet" else "Nothing completed yet",
-                        if (segment == EventSegment.UPCOMING) "Bookings you create will appear here with their date, venue and balance." else "Events move here after their date passes.",
-                        Modifier.padding(top = 160.dp), actionTitle = if (segment == EventSegment.UPCOMING) "Create event" else null, actionIcon = Icons.Outlined.Add, primary = true,
+                        if (segment == EventSegment.UPCOMING) "Bookings you create will appear here with their date, venue and balance." else "Events move here once you mark them completed.",
+                        Modifier.padding(top = 120.dp), actionTitle = if (segment == EventSegment.UPCOMING) "Create event" else null, actionIcon = Icons.Outlined.Add, primary = true,
                     ) { nav.push(Routes.create) }
                 } else groups.forEach { (name, evs) ->
                     Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
-                        SectionHeading(name, trailing = "${evs.size} events · ${Fmt.inr(evs.sumOf { it.quoted })}")
-                        evs.forEach { e -> EventCard(e, store.clientFor(e), store.paymentState(e), onClick = { nav.push(Routes.event(e.id)) }) }
+                        SectionHeading(name, trailing = "${evs.size} event${if (evs.size == 1) "" else "s"} · ${Fmt.inr(evs.sumOf { it.quoted })}")
+                        evs.forEach { e -> EventCard(e, store.clientFor(e), store.paymentState(e), onClick = { nav.push(Routes.event(e.id)) }, conflicted = store.isConflicted(e)) }
                     }
                 }
             }
         }
-        if (segment != EventSegment.COMPLETED) FloatingAction(if (segment == EventSegment.ENQUIRY) "New enquiry" else "New event", Icons.Outlined.Add) { nav.push(if (segment == EventSegment.ENQUIRY) Routes.enquiry else Routes.create) }
+        if (segment != EventSegment.COMPLETED) FloatingAction(if (segment == EventSegment.ENQUIRY) "New enquiry" else "New event", Icons.Outlined.Add) { nav.push(if (segment == EventSegment.ENQUIRY) Routes.enquiry() else Routes.create) }
     }
 }
 
 @Composable
-private fun EnquiryList(nav: Nav) {
+private fun EnquiryList(store: AppStore, nav: Nav) {
+    val open = store.openEnquiries
     Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
-        SectionHeading("Open", trailing = "${Seed.openEnquiries} enquiries")
-        RowGroup {
-            listOf(
-                Triple(Seed.enquiry.name, "${Seed.enquiry.source} · ${Fmt.weekdayDayMonth(Seed.enquiry.date!!)}", Seed.enquiry.budget),
-                Triple("Neha Bhatia", "Instagram · Sat 16 Jan", "₹1,50,000 – ₹3,00,000"),
-                Triple("Rohan Kapadia", "Wedding planner · Sat 30 Jan", "Over ₹10,00,000"),
-            ).forEachIndexed { i, (name, detail, value) ->
-                if (i > 0) Hairline()
-                ListRow(name, subtitle = detail, onClick = { nav.push(Routes.enquiry) }, leading = { IconTile(Icons.Outlined.MailOutline) }) {
-                    Text(value, style = Type.caption, color = M.textMute); Chevron()
+        if (open.isEmpty()) EmptyState("No open enquiries", "Log an enquiry the moment someone asks, and check their date against the calendar.", Modifier.padding(top = 120.dp), "New enquiry", Icons.Outlined.Add, true) { nav.push(Routes.enquiry()) }
+        else {
+            SectionHeading("Open", trailing = "${open.size} enquir${if (open.size == 1) "y" else "ies"}")
+            RowGroup {
+                open.forEachIndexed { i, q ->
+                    if (i > 0) Hairline()
+                    ListRow(q.name, subtitle = listOfNotNull(q.source, q.date?.let { Fmt.weekdayDayMonth(it) }).joinToString(" · "), onClick = { nav.push(Routes.enquiry(q.id)) }, leading = { IconTile(Icons.Outlined.MailOutline) }) {
+                        Text(q.budget, style = Type.caption, color = M.textMute, maxLines = 1); Chevron()
+                    }
                 }
             }
         }
@@ -148,9 +148,14 @@ fun EventDetailScreen(store: AppStore, nav: Nav, eventId: String) {
     val e = store.event(eventId) ?: return
     val client = store.clientFor(e)
     val balance = store.balanceDue(e.id); val overdue = store.overdueAmount(e.id)
+    val conflicted = store.isConflicted(e)
+    val pending = store.pendingChangeRequest(e.id)
     var paymentsOpen by remember { mutableStateOf(false) }
     var record by remember { mutableStateOf<Milestone?>(null) }
     var cancelConfirm by remember { mutableStateOf(false) }
+    var holds by remember { mutableStateOf(false) }
+    var change by remember { mutableStateOf(false) }
+    var editClient by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     Screen(
@@ -160,17 +165,16 @@ fun EventDetailScreen(store: AppStore, nav: Nav, eventId: String) {
             Box {
                 CircleAction(Icons.Outlined.MoreHoriz, { menu = true })
                 DropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem({ Text("Edit event") }, { menu = false; nav.push(Routes.create) })
-                    DropdownMenuItem({ Text("Duplicate") }, { menu = false; store.show(Toast.Kind.INFO, "Duplicated as a draft") })
-                    DropdownMenuItem({ Text("Expenses") }, { menu = false; nav.push(Routes.expenses(e.id)) })
-                    if (store.pendingChangeRequest && e.id == "kapoor-sangeet") DropdownMenuItem({ Text("Change request") }, { menu = false; nav.push(Routes.change(e.id)) })
+                    DropdownMenuItem({ Text("Log change request") }, { menu = false; change = true })
+                    DropdownMenuItem({ Text("Expenses and margin") }, { menu = false; nav.push(Routes.expenses(e.id)) })
+                    DropdownMenuItem({ Text("Set inventory holds") }, { menu = false; holds = true })
+                    if (e.status == EventStatus.UPCOMING) DropdownMenuItem({ Text("Mark completed") }, { menu = false; store.markCompleted(e.id) })
                     HorizontalDivider()
-                    DropdownMenuItem({ Text("Cancel event", color = m.danger) }, { menu = false; cancelConfirm = true })
+                    if (e.status != EventStatus.CANCELLED) DropdownMenuItem({ Text("Cancel event", color = m.danger) }, { menu = false; cancelConfirm = true })
                 }
             }
         },
     ) {
-        // Hero
         Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Space.md)) {
             Box(Modifier.width(Dim.edge).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(m.event(e.hue)))
             Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
@@ -178,21 +182,21 @@ fun EventDetailScreen(store: AppStore, nav: Nav, eventId: String) {
                 Text("${Fmt.weekdayLong(e.day)} · ${Fmt.timeRange(e.start, e.end)}", style = Type.bodyMd, color = m.textSecondary)
                 Text(listOfNotNull(e.venue.short, e.venue.hall).joinToString(" · "), style = Type.caption, color = m.textMute)
                 Row(Modifier.padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
-                    if (!e.isCompleted) Row(Modifier.height(28.dp).border(1.dp, m.line, CircleShape).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
-                        Icon(Icons.Outlined.Schedule, null, Modifier.size(14.dp), tint = m.text)
-                        Text(Fmt.capitalized(Fmt.relativeDays(e.day)), style = Type.caption, color = m.text)
+                    if (e.status == EventStatus.UPCOMING) Row(Modifier.height(28.dp).border(1.dp, m.line, CircleShape).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                        Icon(Icons.Outlined.Schedule, null, Modifier.size(14.dp), tint = m.text); Text(Fmt.capitalized(Fmt.relativeDays(e.day)), style = Type.caption, color = m.text)
                     }
-                    if (e.hasCrewConflict) StatusChip(ChipKind.CONFLICT)
+                    if (conflicted) StatusChip(ChipKind.CONFLICT)
                     if (e.status == EventStatus.CANCELLED) StatusChip(ChipKind.CANCELLED)
+                    if (e.status == EventStatus.COMPLETED) StatusChip(ChipKind.CONFIRMED)
                 }
             }
         }
-        if (store.pendingChangeRequest && e.id == "kapoor-sangeet") Card(fill = m.accentTint, onClick = { nav.push(Routes.change(e.id)) }) {
+        if (pending != null && store.vendor?.notifyChanges != false) Card(fill = m.accentTint, onClick = { nav.push(Routes.change(pending.id)) }) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
                 Icon(Icons.Outlined.Sync, null, Modifier.size(Dim.icon), tint = m.accentText)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Change request from ${client?.name ?: "the client"}", style = Type.bodyMdStrong, color = m.text)
-                    Text("Add 200 guests · today 08:12 · see what it moves", style = Type.caption, color = m.textMute)
+                    Text("${pending.summary} · ${pending.via}, ${Fmt.weekdayDayMonthTime(pending.requestedAt)} · see what it moves", style = Type.caption, color = m.textMute)
                 }
                 Chevron()
             }
@@ -205,15 +209,15 @@ fun EventDetailScreen(store: AppStore, nav: Nav, eventId: String) {
             }
         }
         RowGroup {
-            SectionRow(Icons.Outlined.CreditCard, "Payments", "${Fmt.inr(store.collected(e.id))} of ${Fmt.inr(e.quoted)}" + if (overdue > 0) " · 1 overdue" else "", expanded = paymentsOpen) { paymentsOpen = !paymentsOpen }
+            SectionRow(Icons.Outlined.CreditCard, "Payments", "${Fmt.inr(store.collected(e.id))} of ${Fmt.inr(e.quoted)}" + if (overdue > 0) " · overdue" else "", expanded = paymentsOpen) { paymentsOpen = !paymentsOpen }
             AnimatedVisibility(paymentsOpen) {
                 Column {
                     store.milestonesFor(e.id).forEach { ms ->
                         Hairline()
-                        PaymentRow(ms, paymentSubtitle(ms), subtitleColor = if (ms.status == MilestoneStatus.OVERDUE) m.danger else m.textMute, onClick = { if (ms.isOpen) record = ms })
+                        PaymentRow(ms, paymentSubtitle(ms), subtitleColor = if (ms.effectiveStatus == MilestoneStatus.OVERDUE) m.danger else m.textMute, onClick = { if (ms.isOpen) record = ms })
                     }
                     Row(Modifier.padding(Space.lg), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                        MButton("Record payment", { record = store.milestonesFor(e.id).firstOrNull { it.isOpen } }, Modifier.weight(1f), kind = ButtonKind.SECONDARY, compact = true, icon = Icons.Outlined.CurrencyRupee)
+                        MButton("Record payment", { record = store.milestonesFor(e.id).firstOrNull { it.isOpen } ?: run { nav.push(Routes.schedule(e.id)); null } }, Modifier.weight(1f), kind = ButtonKind.SECONDARY, compact = true, icon = Icons.Outlined.CurrencyRupee)
                         Text("Schedule", style = Type.buttonSm, color = m.accentText, modifier = Modifier.clickable { nav.push(Routes.schedule(e.id)) })
                     }
                 }
@@ -221,16 +225,20 @@ fun EventDetailScreen(store: AppStore, nav: Nav, eventId: String) {
             Hairline()
             SectionRow(Icons.Outlined.Groups, "Crew", "${e.crewAssigned} of ${e.crewNeeded} · ${store.crewConflictNote(e) ?: "assigned"}") { nav.push(Routes.assign(e.id)) }
             Hairline()
-            SectionRow(Icons.Outlined.Inventory2, "Inventory", e.inventorySummary) { nav.push(Routes.inventory) }
+            SectionRow(Icons.Outlined.Inventory2, "Inventory", store.inventorySummary(e)) { holds = true }
             Hairline()
-            SectionRow(Icons.Outlined.ListAlt, "Runsheet", e.runsheetSummary) { nav.push(Routes.runsheet(e.id)) }
+            SectionRow(Icons.Outlined.ListAlt, "Runsheet", store.runsheetSummary(e)) { nav.push(Routes.runsheet(e.id)) }
         }
-        if (client != null) ContactRow(client, "${client.phone} · ${if (client.isRepeat) "repeat client" else "first event"}", onCall = { dial(ctx, client.phone) }, onMessage = { whatsapp(ctx, client.phone) })
+        if (client != null) Box(Modifier.clickable { editClient = true }) {
+            ContactRow(client, "${client.phone.ifEmpty { "No phone" }} · ${if (client.isRepeat) "repeat client" else "first event"}", onCall = { dial(ctx, client.phone) }, onMessage = { whatsapp(ctx, client.phone) })
+        }
     }
     record?.let { ms -> ModalBottomSheet(onDismissRequest = { record = null }, containerColor = m.surface, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) { RecordPaymentSheet(store, ms) { record = null } } }
+    if (holds) EventHoldsSheet(store, e) { holds = false }
+    if (change) LogChangeRequestSheet(store, e, onLogged = { nav.push(Routes.change(it.id)) }) { change = false }
+    if (editClient && client != null) ClientSheet(store, client) { editClient = false }
     if (cancelConfirm) ModalBottomSheet(onDismissRequest = { cancelConfirm = false }, containerColor = m.surface) {
-        // Destructive confirmation names the specific thing being destroyed (spec §5).
-        SheetContent("Cancel the ${e.name} on ${Fmt.dayMonthLong(e.day)}?", "${e.crewAssigned} crew and the inventory holds are released. ${client?.name ?: "The client"} is not notified automatically.", actions = {
+        SheetContent("Cancel the ${e.name} on ${Fmt.dayMonthLong(e.day)}?", "${store.assignedCrew(e.id).size} crew bookings and the inventory holds are released. ${client?.name ?: "The client"} is not notified automatically.", actions = {
             MButton("Cancel the ${e.type.word}", { store.cancelEvent(e.id); cancelConfirm = false; nav.back() }, kind = ButtonKind.DESTRUCTIVE)
             MButton("Keep it", { cancelConfirm = false }, kind = ButtonKind.TERTIARY, compact = true)
         }) {}
@@ -239,31 +247,40 @@ fun EventDetailScreen(store: AppStore, nav: Nav, eventId: String) {
 
 @Composable
 private fun SectionRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, summary: String, expanded: Boolean? = null, onClick: () -> Unit) {
-    ListRow(title, subtitle = summary, onClick = onClick, leading = { IconTile(icon) }) {
-        Chevron(Modifier.rotate(if (expanded == true) 90f else 0f))
-    }
+    ListRow(title, subtitle = summary, onClick = onClick, leading = { IconTile(icon) }) { Chevron(Modifier.rotate(if (expanded == true) 90f else 0f)) }
 }
 
-fun paymentSubtitle(m: Milestone): String = when (m.status) {
+fun paymentSubtitle(m: Milestone): String = when (m.effectiveStatus) {
     MilestoneStatus.PAID -> "Paid ${Fmt.weekdayDayMonth(m.paidOn ?: m.due)}" + (m.method?.let { " · ${it.label}" } ?: "") + (m.reference?.let { " · ref $it" } ?: "")
     MilestoneStatus.OVERDUE -> "Due ${Fmt.weekdayDayMonth(m.due)} · ${Fmt.daysLate(m.due)} days late"
     MilestoneStatus.PENDING -> "Due ${Fmt.weekdayDayMonth(m.due)} · ${Fmt.relativeDays(m.due)}"
 }
 
-fun dial(ctx: android.content.Context, phone: String) = runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:${phone.replace(" ", "")}"))) }
+fun dial(ctx: android.content.Context, phone: String) = runCatching { if (phone.isNotBlank()) ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:${phone.replace(" ", "")}"))) }
 fun whatsapp(ctx: android.content.Context, phone: String, text: String = "") = runCatching {
-    ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://wa.me/91${phone.replace(" ", "")}" + if (text.isEmpty()) "" else "?text=${android.net.Uri.encode(text)}")))
+    if (phone.isNotBlank()) ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://wa.me/91${phone.replace(" ", "")}" + if (text.isEmpty()) "" else "?text=${android.net.Uri.encode(text)}")))
+}
+fun sms(ctx: android.content.Context, phone: String, text: String) = runCatching {
+    if (phone.isNotBlank()) ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:${phone.replace(" ", "")}")).putExtra("sms_body", text))
+}
+fun shareText(ctx: android.content.Context, subject: String, text: String) = runCatching {
+    ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(android.content.Intent.EXTRA_SUBJECT, subject); putExtra(android.content.Intent.EXTRA_TEXT, text) }, subject))
 }
 
-/** Date picker in a sheet, pinned to the design's calendar. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DateSheet(title: String, subtitle: String?, initial: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit) {
-    val state = rememberDatePickerState(initialSelectedDateMillis = initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(), initialDisplayedMonthMillis = initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+fun DateSheet(title: String, subtitle: String?, initial: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit, minDate: LocalDate? = null, maxDate: LocalDate? = null) {
+    val millis = initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    val state = rememberDatePickerState(initialSelectedDateMillis = millis, initialDisplayedMonthMillis = millis, selectableDates = object : androidx.compose.material3.SelectableDates {
+        override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+            val d = Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneOffset.UTC).toLocalDate()
+            return (minDate == null || !d.isBefore(minDate)) && (maxDate == null || !d.isAfter(maxDate))
+        }
+    })
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = M.surface, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        SheetContent(title, subtitle, actions = {
-            MButton("Done", { state.selectedDateMillis?.let { onPick(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) }; onDismiss() })
-        }) { DatePicker(state, showModeToggle = false, title = null, headline = null) }
+        SheetContent(title, subtitle, actions = { MButton("Done", { state.selectedDateMillis?.let { onPick(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) }; onDismiss() }) }) {
+            DatePicker(state, showModeToggle = false, title = null, headline = null)
+        }
     }
 }
 
@@ -288,12 +305,10 @@ fun <T> ChoiceSheet(title: String, options: List<T>, selected: T?, label: (T) ->
 fun CreateEventScreen(store: AppStore, nav: Nav) {
     val m = M
     var step by remember { mutableStateOf(1) }
-    var showDate by remember { mutableStateOf(false) }
-    var showType by remember { mutableStateOf(false) }
-    var showAmount by remember { mutableStateOf(false) }
+    var showDate by remember { mutableStateOf(false) }; var showType by remember { mutableStateOf(false) }; var showAmount by remember { mutableStateOf(false) }
     val d = store.draft
     val conflicts = d.date?.let { store.eventsOn(it) }.orEmpty()
-    val packageTotal = Seed.packages.filter { it.id in d.packageIds }.sumOf { it.price }
+    val packageTotal = store.packages.filter { it.id in d.packageIds }.sumOf { it.price }
     val step1Valid = d.clientName.isNotBlank() && d.type != null && d.date != null
     val step2Valid = d.venue.isNotBlank() && d.quoted > 0
     Screen(
@@ -303,12 +318,10 @@ fun CreateEventScreen(store: AppStore, nav: Nav) {
             if (step == 2) Card(padding = Space.md) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Running total · ${d.packageIds.size} packages", style = Type.caption, color = m.textMute)
-                        Text(Fmt.inr(packageTotal), style = Type.bodyMdStrong, color = m.text)
+                        Text("Running total · ${d.packageIds.size} packages", style = Type.caption, color = m.textMute); Text(Fmt.inr(packageTotal), style = Type.bodyMdStrong, color = m.text)
                     }
                     if (d.quoted > 0) Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("${Fmt.inr(d.quoted - packageTotal)} margin", style = Type.caption, color = if (d.quoted >= packageTotal) m.textMute else m.danger)
-                        Text("on ${Fmt.inr(d.quoted)} quoted", style = Type.caption, color = m.textMute)
+                        Text("${Fmt.inr(d.quoted - packageTotal)} margin", style = Type.caption, color = if (d.quoted >= packageTotal) m.textMute else m.danger); Text("on ${Fmt.inr(d.quoted)} quoted", style = Type.caption, color = m.textMute)
                     }
                 }
             }
@@ -319,8 +332,7 @@ fun CreateEventScreen(store: AppStore, nav: Nav) {
         Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             Text("Step $step of 2 · ${if (step == 1) "Client and date" else "Venue and pricing"}", style = Type.caption, color = m.textMute)
             Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
-                Box(Modifier.weight(1f).height(3.dp).clip(CircleShape).background(m.accent))
-                Box(Modifier.weight(1f).height(3.dp).clip(CircleShape).background(if (step == 2) m.accent else m.line))
+                Box(Modifier.weight(1f).height(3.dp).clip(CircleShape).background(m.accent)); Box(Modifier.weight(1f).height(3.dp).clip(CircleShape).background(if (step == 2) m.accent else m.line))
             }
         }
         if (step == 1) {
@@ -328,28 +340,28 @@ fun CreateEventScreen(store: AppStore, nav: Nav) {
             InputField("Phone", d.phone, { v -> store.updateDraft { it.copy(phone = v) } }, placeholder = "98100 00000", keyboard = KeyboardType.Phone)
             PickerField("Event type", d.type?.label ?: "", { showType = true })
             PickerField("Date", d.date?.let { Fmt.weekdayLongYear(it) } ?: "", { showDate = true }, placeholder = "Pick a date", trailing = Icons.Outlined.CalendarToday, highlighted = d.date != null)
-            // Conflict check fires on date selection, not on submission (spec B3).
             if (d.date != null && conflicts.isNotEmpty()) {
-                val chairs = store.item("chairs")?.let { "${it.committed(d.date)} of ${it.total} chairs" } ?: "inventory"
+                val chairs = store.inventory.firstOrNull { it.name.contains("chair", true) }?.let { "${it.committed(d.date)} of ${it.total} ${it.unit}" }
                 val whenWord = if (conflicts.all { Cal.hour(it.start) >= 17 }) "that evening" else "that day"
                 val words = listOf("", "One", "Two", "Three", "Four", "Five")
+                val lead = store.crew.firstOrNull { mm -> mm.isLead && mm.bookings.any { id -> conflicts.any { it.id == id } } }
+                val committed = listOfNotNull(lead?.let { "${it.firstName}'s team" }, chairs).joinToString(" and ")
                 InlineConflictWarning(
-                    if (conflicts.size == 1) "${conflicts[0].name} already runs $whenWord. $chairs are committed." else "${words.getOrNull(conflicts.size) ?: conflicts.size} events already run $whenWord. Suresh's team and $chairs are committed.",
+                    (if (conflicts.size == 1) "${conflicts[0].name} already runs $whenWord." else "${words.getOrNull(conflicts.size) ?: conflicts.size} events already run $whenWord.") + (if (committed.isEmpty()) "" else " $committed are committed."),
                     conflicts, "See ${Fmt.dayMonth(d.date)} timeline",
                 ) { nav.push(Routes.day(d.date)) }
             }
         } else {
             InputField("Venue", d.venue, { v -> store.updateDraft { it.copy(venue = v) } }, placeholder = "Venue, area", trailing = Icons.Outlined.LocationOn)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Guest count", style = Type.bodyMd, color = m.text); Text("Catering by the venue", style = Type.caption, color = m.textMute)
-                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) { Text("Guest count", style = Type.bodyMd, color = m.text); Text("Catering by the venue", style = Type.caption, color = m.textMute) }
                 MStepper(d.guests, { v -> store.updateDraft { it.copy(guests = v) } }, range = 10..5000)
             }
             Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 Text("Packages · select all that apply", style = Type.caption, color = m.textMute)
-                RowGroup {
-                    Seed.packages.forEachIndexed { i, p ->
+                if (store.packages.isEmpty()) Text("No package templates yet — add them in Profile.", style = Type.caption, color = m.textMute)
+                else RowGroup {
+                    store.packages.forEachIndexed { i, p ->
                         if (i > 0) Hairline()
                         val on = p.id in d.packageIds
                         ListRow(p.name, subtitle = "${Fmt.inr(p.price)} · ${p.detail}", selected = on, onClick = { store.updateDraft { it.copy(packageIds = if (on) it.packageIds - p.id else it.packageIds + p.id) } }) {
@@ -362,30 +374,23 @@ fun CreateEventScreen(store: AppStore, nav: Nav) {
         }
     }
     if (showType) ChoiceSheet("Event type", EventType.entries, d.type, { it.label }, { t -> store.updateDraft { it.copy(type = t) } }) { showType = false }
-    if (showDate) DateSheet("Event date", "Conflicts are checked as soon as you pick.", d.date ?: LocalDate.of(2026, 11, 14), { p -> store.updateDraft { it.copy(date = p) } }) { showDate = false }
+    if (showDate) DateSheet("Event date", "Conflicts are checked as soon as you pick.", d.date ?: Cal.nextSaturday, { p -> store.updateDraft { it.copy(date = p) } }, { showDate = false }, minDate = Cal.todayDate)
     if (showAmount) ModalBottomSheet(onDismissRequest = { showAmount = false }, containerColor = m.surface, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         SheetContent("Quoted amount", "What the client pays in total", actions = { MButton("Done", { showAmount = false }) }) {
-            AmountInput(d.quoted, label = null)
-            NumericKeypad(d.quoted, { v -> store.updateDraft { it.copy(quoted = v) } })
+            AmountInput(d.quoted, label = null); NumericKeypad(d.quoted, { v -> store.updateDraft { it.copy(quoted = v) } })
         }
     }
 }
 
-/** Inline warning under a date field (B3 / E3). */
 @Composable
 fun InlineConflictWarning(sentence: String, events: List<Event>, linkTitle: String?, onLink: (() -> Unit)?) {
     val m = M
     Column(Modifier.fillMaxWidth().clip(CardShape).background(m.dangerTint).padding(Space.lg), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-            Icon(Icons.Outlined.WarningAmber, null, Modifier.size(Dim.icon), tint = m.danger)
-            Text(sentence, style = Type.bodyMd, color = m.text)
-        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) { Icon(Icons.Outlined.WarningAmber, null, Modifier.size(Dim.icon), tint = m.danger); Text(sentence, style = Type.bodyMd, color = m.text) }
         Column(Modifier.padding(start = Dim.icon + Space.md), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
             events.forEach { e ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    Box(Modifier.size(Dim.dot).clip(CircleShape).background(m.event(e.hue)))
-                    Text(e.name, style = Type.caption, color = m.text)
-                    Text("${Fmt.timeRange(e.start, e.end)} · ${e.crewAssigned} crew", style = Type.caption, color = m.textMute)
+                    Box(Modifier.size(Dim.dot).clip(CircleShape).background(m.event(e.hue))); Text(e.name, style = Type.caption, color = m.text); Text("${Fmt.timeRange(e.start, e.end)} · ${e.crewAssigned} crew", style = Type.caption, color = m.textMute)
                 }
             }
         }
@@ -401,18 +406,20 @@ fun RunsheetScreen(store: AppStore, nav: Nav, eventId: String) {
     val e = store.event(eventId) ?: return
     val tasks = store.tasks.filter { it.eventId == eventId }
     val blocks = tasks.groupBy { it.block }
-    var marker by remember { mutableStateOf(Seed.runsheetMarkers[0]) }
+    val defaultBlocks = listOf("Setup", "Dressing", "Event")
+    var marker by remember { mutableStateOf("09:00") }
     var addSheet by remember { mutableStateOf(false) }
     var newTitle by remember { mutableStateOf("") }; var newCrew by remember { mutableStateOf("") }; var newBlock by remember { mutableStateOf("Setup") }
     var menu by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
+    val ctx = LocalContext.current
     Screen(
         title = "Runsheet", subtitle = "${e.name} · ${Fmt.weekdayLong(e.day)}", onBack = nav::back, spacing = Space.lg,
         actions = {
             Box {
                 CircleAction(Icons.Outlined.MoreHoriz, { menu = true })
                 DropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem({ Text("Share with crew") }, { menu = false; store.show(Toast.Kind.SUCCESS, "Runsheet shared on WhatsApp") })
+                    DropdownMenuItem({ Text("Share with crew") }, { menu = false; shareText(ctx, "Runsheet · ${e.name}", buildString { append("Runsheet · ${e.name} · ${Fmt.weekdayLong(e.day)}\n"); blocks.forEach { (b, l) -> append("\n$b ${l.first().blockTime}\n"); l.forEach { append("${if (it.done) "✓" else "○"} ${it.title} — ${it.crew} · ${it.duration}\n") } } }) })
                     DropdownMenuItem({ Text("Mark all done") }, { menu = false; tasks.filter { !it.done }.forEach { store.toggleTask(it.id) } })
                 }
             }
@@ -420,16 +427,17 @@ fun RunsheetScreen(store: AppStore, nav: Nav, eventId: String) {
         docked = { MButton("Add task", { addSheet = true }, kind = ButtonKind.SECONDARY, icon = Icons.Outlined.Add) },
     ) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            Seed.runsheetMarkers.forEach { mk ->
+            store.runsheetMarkers.forEach { mk ->
                 val on = marker == mk
                 Box(Modifier.height(36.dp).clip(CircleShape).background(if (on) m.accent else m.surface).border(1.dp, if (on) Color.Transparent else m.line, CircleShape).clickable { marker = mk }.padding(horizontal = Space.md), contentAlignment = Alignment.Center) {
                     Text(mk, style = Type.buttonSm, color = if (on) m.textOnPrimary else m.text)
                 }
             }
         }
+        if (tasks.isEmpty()) EmptyState("No tasks yet", "Add the setup, dressing and event-time tasks so the crew knows what happens when.", Modifier.padding(top = 80.dp), "Add task", Icons.Outlined.Add, true) { addSheet = true }
         blocks.forEach { (name, list) ->
             Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
-                SectionHeading("$name · ${list.first().blockTime}", trailing = "${list.count { it.done }} of ${list.size} done")
+                SectionHeading(if (list.first().blockTime.isEmpty()) name else "$name · ${list.first().blockTime}", trailing = "${list.count { it.done }} of ${list.size} done")
                 RowGroup {
                     list.forEachIndexed { i, t ->
                         if (i > 0) Hairline(56.dp)
@@ -457,15 +465,15 @@ fun RunsheetScreen(store: AppStore, nav: Nav, eventId: String) {
             }
         }
     }
-    if (addSheet) ModalBottomSheet(onDismissRequest = { addSheet = false }, containerColor = m.surface, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        SheetContent("Add task", "It joins the block you pick.", actions = {
-            MButton("Add task", { store.addTask(eventId, newBlock, newTitle, newCrew.ifBlank { "Unassigned" }); newTitle = ""; newCrew = ""; addSheet = false }, enabled = newTitle.isNotBlank())
-        }) {
-            InputField("Task", newTitle, { newTitle = it }, placeholder = "Hang the entrance florals")
-            InputField("Crew", newCrew, { newCrew = it }, placeholder = "Kavita · 2 crew")
-            Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                Text("Block", style = Type.caption, color = m.textMute)
-                SegmentedControl(blocks.keys.toList(), newBlock, { it }, { newBlock = it })
+    if (addSheet) {
+        val names = blocks.keys.toList().ifEmpty { defaultBlocks }
+        ModalBottomSheet(onDismissRequest = { addSheet = false }, containerColor = m.surface, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            SheetContent("Add task", "It joins the block you pick.", actions = {
+                MButton("Add task", { store.addTask(eventId, if (newBlock in names) newBlock else names[0], newTitle.trim(), newCrew.ifBlank { "Unassigned" }); newTitle = ""; newCrew = ""; addSheet = false }, enabled = newTitle.isNotBlank())
+            }) {
+                InputField("Task", newTitle, { newTitle = it }, placeholder = "Hang the entrance florals")
+                InputField("Crew", newCrew, { newCrew = it }, placeholder = "Kavita · 2 crew")
+                Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) { Text("Block", style = Type.caption, color = m.textMute); SegmentedControl(names, if (newBlock in names) newBlock else names[0], { it }, { newBlock = it }) }
             }
         }
     }
@@ -473,12 +481,12 @@ fun RunsheetScreen(store: AppStore, nav: Nav, eventId: String) {
 
 /** B6 · Change request — show consequences, not a form. */
 @Composable
-fun ChangeRequestScreen(store: AppStore, nav: Nav, eventId: String) {
+fun ChangeRequestScreen(store: AppStore, nav: Nav, requestId: String) {
     val m = M
-    val e = store.event(eventId) ?: return
-    val client = store.clientFor(e) ?: return
-    val addedCost = 15_700; val revised = 710_000; val perGuest = 350
-    val margin = (revised - e.quoted) - addedCost
+    val cr = store.changeRequest(requestId) ?: return
+    val e = store.event(cr.eventId) ?: return
+    val client = store.clientFor(e)
+    val margin = (cr.revisedQuote - e.quoted) - cr.addedCost
     var menu by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     Screen(
@@ -487,45 +495,39 @@ fun ChangeRequestScreen(store: AppStore, nav: Nav, eventId: String) {
             Box {
                 CircleAction(Icons.Outlined.MoreHoriz, { menu = true })
                 DropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem({ Text("Call ${client.name}") }, { menu = false; dial(ctx, client.phone) })
+                    if (client != null && client.phone.isNotBlank()) DropdownMenuItem({ Text("Call ${client.name}") }, { menu = false; dial(ctx, client.phone) })
                     DropdownMenuItem({ Text("Open event") }, { menu = false; nav.push(Routes.event(e.id)) })
                 }
             }
         },
-        docked = {
-            MButton("Approve and send revised quote", { store.approveChangeRequest(e.id); nav.back() })
-            // Decline is tertiary, not destructive — declining destroys nothing (NOTES Phase 3).
-            MButton("Decline change", { store.declineChangeRequest(); nav.back() }, kind = ButtonKind.TERTIARY, compact = true)
-        },
+        docked = if (cr.status == ChangeRequestStatus.PENDING) ({
+            MButton("Approve and send revised quote", { store.approveChangeRequest(cr.id); nav.back() })
+            MButton("Decline change", { store.declineChangeRequest(cr.id); nav.back() }, kind = ButtonKind.TERTIARY, compact = true)
+        }) else null,
     ) {
         Card {
             Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                Text("Add 200 guests. ${e.guests} becomes ${e.guests + 200}, ${Cal.daysBetween(Cal.todayDate, e.day)} days out.", style = Type.headingMd, color = m.text)
-                Text("${e.name} · ${client.name} on WhatsApp, today 08:12", style = Type.caption, color = m.textMute)
+                Text("${cr.summary.trim()} ${Cal.daysBetween(Cal.todayDate, e.day)} days out.", style = Type.headingMd, color = m.text)
+                Text("${e.name} · ${client?.name ?: "Client"} via ${cr.via}, ${Fmt.weekdayDayMonthTime(cr.requestedAt)}", style = Type.caption, color = m.textMute)
+                if (cr.status != ChangeRequestStatus.PENDING) StatusChip(if (cr.status == ChangeRequestStatus.APPROVED) ChipKind.CONFIRMED else ChipKind.CANCELLED)
             }
         }
         RowGroup {
-            Seed.changeImpacts.forEachIndexed { i, imp ->
+            cr.impacts.forEachIndexed { i, imp ->
                 if (i > 0) Hairline()
                 Row(Modifier.fillMaxWidth().heightIn(min = Dim.row).padding(horizontal = Space.lg, vertical = Space.xs), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                    IconTile(when (imp.icon) { "people" -> Icons.Outlined.Groups; "truck" -> Icons.Outlined.LocalShipping; else -> Icons.Outlined.Inventory2 }, tint = if (imp.isShort) m.danger else m.textMute, background = if (imp.isShort) m.dangerTint else Color.Transparent)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(imp.resource, style = Type.bodyMdStrong, color = m.text)
-                        Text(imp.detail, style = Type.caption, color = if (imp.isShort) m.danger else m.textMute)
-                    }
+                    IconTile(when (imp.icon) { "people" -> Icons.Outlined.Groups; "transport" -> Icons.Outlined.LocalShipping; else -> Icons.Outlined.Inventory2 }, tint = if (imp.isShort) m.danger else m.textMute, background = if (imp.isShort) m.dangerTint else Color.Transparent)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(imp.resource, style = Type.bodyMdStrong, color = m.text); Text(imp.detail, style = Type.caption, color = if (imp.isShort) m.danger else m.textMute) }
                     Text(imp.delta, style = Type.bodyTabularStrong, color = m.text)
                 }
             }
         }
         Card {
             Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
-                TotalRow("Original quote", e.quoted); TotalRow("Added cost to you", addedCost)
+                TotalRow("Original quote", e.quoted); TotalRow("Added cost to you", cr.addedCost)
                 HorizontalDivider(color = m.line)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Revised quote", style = Type.bodyMdStrong, color = m.text, modifier = Modifier.weight(1f))
-                    Text(Fmt.inr(revised), style = Type.headingLg, color = m.text)
-                }
-                Text("200 guests at ₹$perGuest · ${Fmt.inr(margin)} margin on the change", style = Type.caption, color = m.textMute)
+                Row(verticalAlignment = Alignment.CenterVertically) { Text("Revised quote", style = Type.bodyMdStrong, color = m.text, modifier = Modifier.weight(1f)); Text(Fmt.inr(cr.revisedQuote), style = Type.headingLg, color = m.text) }
+                Text("${cr.guestsDelta} guests at ₹${cr.perGuest} · ${Fmt.inr(margin)} margin on the change", style = Type.caption, color = if (margin < 0) m.danger else m.textMute)
             }
         }
     }

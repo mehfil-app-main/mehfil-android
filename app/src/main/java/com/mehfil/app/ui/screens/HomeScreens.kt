@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowOutward
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.ChevronLeft
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.SouthEast
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -37,9 +39,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.mehfil.app.model.AppStore
 import com.mehfil.app.model.Cal
-import com.mehfil.app.model.EventStatus
+import com.mehfil.app.model.Event
 import com.mehfil.app.model.Fmt
-import com.mehfil.app.model.Seed
 import com.mehfil.app.ui.Nav
 import com.mehfil.app.ui.Routes
 import com.mehfil.app.ui.Tab
@@ -56,22 +57,24 @@ import kotlin.math.roundToInt
 @Composable
 fun HomeScreen(store: AppStore, nav: Nav) {
     val m = M
+    val v = store.vendor
     val saturday = Cal.nextSaturday
     val saturdayEvents = store.eventsOn(saturday)
-    // Home ranks urgency above chronology (NOTES Phase 2): the conflicted event leads.
-    val attention = saturdayEvents.firstOrNull { it.hasCrewConflict } ?: store.upcomingEvents.firstOrNull()
+    val attention: Event? = saturdayEvents.firstOrNull { store.isConflicted(it) } ?: store.upcomingEvents.firstOrNull { store.isConflicted(it) } ?: store.upcomingEvents.firstOrNull { it.day >= Cal.todayDate }
     val greeting = when { Cal.today.hour < 12 -> "Good morning"; Cal.today.hour < 17 -> "Good afternoon"; else -> "Good evening" }
     Screen(
-        title = "$greeting, ${Seed.vendorFirstName}", subtitle = "${Fmt.weekdayLong(Cal.todayDate)} · ${saturdayEvents.size} events this Saturday", isRoot = true,
+        title = "$greeting, ${v?.ownerFirstName ?: "there"}", subtitle = "${Fmt.weekdayLong(Cal.todayDate)} · ${if (saturdayEvents.isEmpty()) "nothing" else "${saturdayEvents.size} events"} this Saturday", isRoot = true,
         headerTrailing = { CircleAction(Icons.Outlined.BarChart, { nav.push(Routes.season) }, contentDescription = "Season summary") },
     ) {
-        store.seasonConflict?.let { (a, b) ->
-            ConflictBanner("${a.name} and ${b.name} both need Suresh's decor team on ${Fmt.weekdayDayMonth(a.day)}.") { nav.pushIn(Tab.TEAM, Routes.assign(a.id)) }
+        val conflict = store.seasonConflict
+        if (conflict != null && v?.notifyConflicts != false) {
+            val (a, b, member) = conflict
+            ConflictBanner("${a.name} and ${b.name} both need ${member.firstName}'s team on ${Fmt.weekdayDayMonth(a.day)}.") { nav.pushIn(Tab.TEAM, Routes.assign(a.id)) }
         }
         Card(onClick = { nav.tab(Tab.MONEY) }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
-                    Text("Outstanding across ${store.eventsWithOpenMoney} events", style = Type.caption, color = m.textMute)
+                    Text(if (store.totalOutstanding == 0) "Nothing outstanding" else "Outstanding across ${store.eventsWithOpenMoney} event${if (store.eventsWithOpenMoney == 1) "" else "s"}", style = Type.caption, color = m.textMute)
                     Text(Fmt.inr(store.totalOutstanding), style = Type.displayHero, color = m.text)
                     if (store.overdueTotal > 0) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
                         Icon(Icons.Outlined.ErrorOutline, null, Modifier.size(14.dp), tint = m.danger)
@@ -82,17 +85,19 @@ fun HomeScreen(store: AppStore, nav: Nav) {
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
-            SectionHeading(attention?.let { "Needs attention · ${Fmt.weekdayShort(it.day)}urday, ${Fmt.relativeDays(it.day)}" } ?: "Next up", link = "Calendar", onLink = { nav.push(Routes.calendar) })
-            attention?.let { e ->
-                EventCard(e, store.clientFor(e), store.paymentState(e), onClick = { nav.push(Routes.event(e.id)) })
-                val others = saturdayEvents.filter { it.id != e.id }
-                if (others.isNotEmpty()) Text("Also Saturday · " + others.joinToString(" · ") { "${it.name} ${Fmt.time(it.start)}" }, style = Type.caption, color = m.textMute)
+            SectionHeading(attention?.let { "Needs attention · ${Fmt.weekdayShort(it.day)}, ${Fmt.relativeDays(it.day)}" } ?: "Next up", link = "Calendar", onLink = { nav.push(Routes.calendar) })
+            if (attention != null) {
+                EventCard(attention, store.clientFor(attention), store.paymentState(attention), onClick = { nav.push(Routes.event(attention.id)) }, conflicted = store.isConflicted(attention))
+                val others = store.eventsOn(attention.day).filter { it.id != attention.id }
+                if (others.isNotEmpty()) Text("Also ${Fmt.weekdayShort(attention.day)} · " + others.joinToString(" · ") { "${it.name} ${Fmt.time(it.start)}" }, style = Type.caption, color = m.textMute)
+            } else if (store.loaded) {
+                EmptyState("No events booked", "Create your first event and Mehfil starts watching the dates, the money and the crew.", Modifier.padding(vertical = Space.xl), "Create event", Icons.Outlined.Add, true) { nav.pushIn(Tab.EVENTS, Routes.create) }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
             StatTile("${store.eventsInMonth(Cal.todayDate.monthValue, Cal.todayDate.year).size}", "Events this month", Modifier.weight(1f)) { nav.tab(Tab.EVENTS) }
-            StatTile("${Seed.crewOnDutyToday}", "Crew on duty today", Modifier.weight(1f)) { nav.tab(Tab.TEAM) }
-            StatTile("${Seed.openEnquiries}", "Open enquiries", Modifier.weight(1f)) { nav.pushIn(Tab.PROFILE, Routes.enquiry) }
+            StatTile("${store.crewOnDuty(Cal.todayDate)}", "Crew on duty today", Modifier.weight(1f)) { nav.tab(Tab.TEAM) }
+            StatTile("${store.openEnquiries.size}", "Open enquiries", Modifier.weight(1f)) { nav.tab(Tab.EVENTS) }
         }
     }
 }
@@ -100,28 +105,26 @@ fun HomeScreen(store: AppStore, nav: Nav) {
 /** A2 · Calendar month — see the shape of the month. */
 @Composable
 fun CalendarMonthScreen(store: AppStore, nav: Nav) {
-    var month by remember { mutableStateOf(YearMonth.of(2026, 11)) }
-    var selected by remember { mutableStateOf(LocalDate.of(2026, 11, 14)) }
+    var month by remember { mutableStateOf(YearMonth.from(Cal.todayDate)) }
+    var selected by remember { mutableStateOf(store.eventsOn(Cal.nextSaturday).firstOrNull()?.day?.takeIf { YearMonth.from(it) == YearMonth.from(Cal.todayDate) } ?: Cal.todayDate) }
     val monthEvents = store.eventsInMonth(month.monthValue, month.year)
     val byDay = monthEvents.groupBy { it.day.dayOfMonth }
-    val conflictDays = monthEvents.filter { it.hasCrewConflict }.map { it.day.dayOfMonth }.toSet()
+    val conflictDays = monthEvents.filter { store.isConflicted(it) }.map { it.day.dayOfMonth }.toSet()
     val dayEvents = store.eventsOn(selected)
     fun shift(n: Int) { month = month.plusMonths(n.toLong()); selected = month.atDay(1) }
     Screen(
-        title = Fmt.monthYear(month.atDay(1)), subtitle = "${monthEvents.size} events · ${Fmt.inr(monthEvents.sumOf { it.quoted })} booked", onBack = nav::back, spacing = Space.lg,
+        title = Fmt.monthYear(month.atDay(1)), subtitle = if (monthEvents.isEmpty()) "No events this month" else "${monthEvents.size} events · ${Fmt.inr(monthEvents.sumOf { it.quoted })} booked", onBack = nav::back, spacing = Space.lg,
         actions = { CircleAction(Icons.Outlined.ChevronLeft, { shift(-1) }); CircleAction(Icons.Outlined.ChevronRight, { shift(1) }) },
     ) {
         Box(Modifier.pointerInput(Unit) { detectHorizontalDragGestures { _, dx -> if (dx < -30) shift(1) else if (dx > 30) shift(-1) } }) {
             CalendarGrid(month, selected, { selected = it }, byDay, conflictDays)
         }
-        SectionHeading(
-            Fmt.weekdayLong(selected), Modifier.padding(top = Space.sm),
-            trailing = if (dayEvents.isEmpty()) "No events" else "${dayEvents.size} events" + if (store.conflictsOn(selected).isEmpty()) "" else " · two overlap",
-            link = if (dayEvents.isEmpty()) null else "Timeline", onLink = { nav.push(Routes.day(selected)) },
-        )
+        SectionHeading(Fmt.weekdayLong(selected), Modifier.padding(top = Space.sm),
+            trailing = if (dayEvents.isEmpty()) "No events" else "${dayEvents.size} events" + if (store.conflictsOn(selected).isEmpty()) "" else " · overlap",
+            link = if (dayEvents.isEmpty()) null else "Timeline", onLink = { nav.push(Routes.day(selected)) })
         if (dayEvents.isEmpty()) Text("Nothing booked on this day.", style = Type.bodyMd, color = M.textMute, modifier = Modifier.fillMaxWidth().padding(vertical = Space.xl), textAlign = TextAlign.Center)
         else Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
-            dayEvents.forEach { e -> EventCard(e, store.clientFor(e), store.paymentState(e), onClick = { nav.push(Routes.event(e.id)) }, compact = true) }
+            dayEvents.forEach { e -> EventCard(e, store.clientFor(e), store.paymentState(e), onClick = { nav.push(Routes.event(e.id)) }, compact = true, conflicted = store.isConflicted(e)) }
         }
     }
 }
@@ -133,7 +136,7 @@ fun DayDetailScreen(store: AppStore, nav: Nav, day: LocalDate) {
     val overlap = store.conflictsOn(day)
     var menu by remember { mutableStateOf(false) }
     Screen(
-        title = Fmt.weekdayLong(day), subtitle = "${evs.size} events · ${evs.sumOf { it.crewAssigned }} crew" + (overlap.maxOfOrNull { it.start }?.let { " · two overlap from ${Fmt.time(it)}" } ?: ""), onBack = nav::back,
+        title = Fmt.weekdayLong(day), subtitle = "${evs.size} events · ${evs.sumOf { it.crewAssigned }} crew" + (overlap.maxOfOrNull { it.start }?.let { " · overlap from ${Fmt.time(it)}" } ?: ""), onBack = nav::back,
         actions = {
             Box {
                 CircleAction(Icons.Outlined.MoreHoriz, { menu = true })
@@ -144,7 +147,8 @@ fun DayDetailScreen(store: AppStore, nav: Nav, day: LocalDate) {
             }
         },
     ) {
-        TimelineStrip(evs, onTap = { nav.push(Routes.event(it.id)) })
+        if (evs.isEmpty()) EmptyState("Nothing on this day", "Pick another date from the calendar.", Modifier.padding(top = 120.dp))
+        else TimelineStrip(evs, onTap = { nav.push(Routes.event(it.id)) })
     }
 }
 
@@ -152,43 +156,42 @@ fun DayDetailScreen(store: AppStore, nav: Nav, day: LocalDate) {
 @Composable
 fun SeasonSummaryScreen(store: AppStore, nav: Nav) {
     val m = M
-    val live = store.events.filter { it.status != EventStatus.CANCELLED }
-    val booked = live.sumOf { it.quoted }; val count = live.size
-    val pct = (booked * 100.0 / Seed.seasonTarget).roundToInt()
-    val delta = ((booked - Seed.lastSeasonBooked) * 100.0 / Seed.lastSeasonBooked).roundToInt()
-    Screen(title = "Season 2026–27", subtitle = "October to February · $count events booked", onBack = nav::back, spacing = Space.lg) {
+    val s = store.season
+    val target = store.vendor?.seasonTarget ?: 0
+    val pct = if (target == 0) 0 else (s.booked * 100.0 / target).roundToInt()
+    Screen(title = s.label, subtitle = "October to February · ${s.count} events booked", onBack = nav::back, spacing = Space.lg) {
         Card {
             Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 Text("Booked this season", style = Type.caption, color = m.textMute)
-                Text(Fmt.inr(booked), style = Type.displayHero, color = m.text)
-                ProgressBar(booked.toFloat() / Seed.seasonTarget, Modifier.padding(top = Space.xs))
-                Text("$pct% of the ${Fmt.inr(Seed.seasonTarget)} target · ${Fmt.inr(Seed.seasonTarget - booked)} to go", style = Type.caption, color = m.textMute)
+                Text(Fmt.inr(s.booked), style = Type.displayHero, color = m.text)
+                if (target > 0) {
+                    ProgressBar(s.booked.toFloat() / target, Modifier.padding(top = Space.xs))
+                    Text("$pct% of the ${Fmt.inr(target)} target · ${Fmt.inr(maxOf(0, target - s.booked))} to go", style = Type.caption, color = m.textMute)
+                } else Text("Set a season target in Profile → Business details.", style = Type.caption, color = m.textMute)
             }
         }
-        Card {
-            Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
-                Text("Booked value by month", style = Type.caption, color = m.textMute)
-                MonthBars(Seed.seasonMonths)
-            }
-        }
+        Card { Column(verticalArrangement = Arrangement.spacedBy(Space.md)) { Text("Booked value by month", style = Type.caption, color = m.textMute); MonthBars(s.months) } }
         Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-            StatTile("$count", "Events booked", Modifier.weight(1f))
-            StatTile(Fmt.inr(if (count == 0) 0 else booked / count / 100 * 100), "Average ticket", Modifier.weight(1f))
+            StatTile("${s.count}", "Events booked", Modifier.weight(1f))
+            StatTile(Fmt.inr(if (s.count == 0) 0 else s.booked / s.count / 100 * 100), "Average ticket", Modifier.weight(1f))
         }
-        Card {
-            Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                Icon(Icons.Outlined.ArrowOutward, null, Modifier.size(Dim.icon), tint = m.accentText)
-                Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
-                    Text("${if (delta >= 0) "+" else ""}$delta%", style = Type.displayMd, color = m.text)
-                    Text("against last season", style = Type.bodyMd, color = m.text)
-                    Text("${Fmt.inr(Seed.lastSeasonBooked)} across ${Seed.lastSeasonEvents} events by this point in 2025", style = Type.caption, color = m.textMute)
+        val last = store.vendor?.lastSeasonBooked
+        if (last != null && last > 0) {
+            val delta = ((s.booked - last) * 100.0 / last).roundToInt()
+            Card {
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+                    Icon(if (delta >= 0) Icons.Outlined.ArrowOutward else Icons.Outlined.SouthEast, null, Modifier.size(Dim.icon), tint = m.accentText)
+                    Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                        Text("${if (delta >= 0) "+" else ""}$delta%", style = Type.displayMd, color = m.text)
+                        Text("against last season", style = Type.bodyMd, color = m.text)
+                        Text("${Fmt.inr(last)} across ${store.vendor?.lastSeasonEvents ?: 0} events by this point last year", style = Type.caption, color = m.textMute)
+                    }
                 }
             }
         }
     }
 }
 
-/** Single-series bars in accent; lakh notation because full grouping does not fit a 60pt column (NOTES). */
 @Composable
 fun MonthBars(months: List<Pair<String, Int>>) {
     val m = M

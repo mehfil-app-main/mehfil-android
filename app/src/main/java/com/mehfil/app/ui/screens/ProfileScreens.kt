@@ -1,9 +1,11 @@
 package com.mehfil.app.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.IosShare
@@ -35,6 +38,7 @@ import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,10 +55,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.mehfil.app.BuildConfig
 import com.mehfil.app.R
 import com.mehfil.app.model.*
 import com.mehfil.app.ui.Nav
@@ -70,37 +77,47 @@ import com.mehfil.app.ui.theme.Space
 import com.mehfil.app.ui.theme.Type
 import java.time.LocalDate
 
+private fun String?.nilIfEmpty() = if (this.isNullOrBlank()) null else this
+
 /** E4 · Profile and settings — deliberately short. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(store: AppStore, nav: Nav) {
     val m = M
+    val v = store.vendor
     var appearanceSheet by remember { mutableStateOf(false) }
+    var businessSheet by remember { mutableStateOf(false) }
+    var paymentSheet by remember { mutableStateOf(false) }
+    var notifySheet by remember { mutableStateOf(false) }
     val repeat = store.clients.count { it.isRepeat }
-    Screen(title = "Profile", subtitle = "${Seed.businessName} · Gurugram", isRoot = true, spacing = Space.lg) {
-        Card {
+    val account = store.auth.account
+    Screen(title = "Profile", subtitle = listOfNotNull(v?.businessName, v?.area?.split(",")?.last()?.trim().nilIfEmpty()).joinToString(" · "), isRoot = true, spacing = Space.lg) {
+        Card(onClick = { businessSheet = true }) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                Box(Modifier.size(48.dp).clip(RoundedCornerShape(Radius.md)).background(m.emphasisBg), contentAlignment = Alignment.Center) { Text("M", style = Type.headingLg, color = m.emphasisText) }
+                Box(Modifier.size(48.dp).clip(RoundedCornerShape(Radius.md)).background(m.emphasisBg), contentAlignment = Alignment.Center) { Text(v?.monogram ?: "M", style = Type.headingLg, color = m.emphasisText) }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(Seed.businessName, style = Type.headingSm, color = m.text)
-                    Text("${Seed.vendorName} · ${Seed.businessArea} · ${Seed.businessSince}", style = Type.caption, color = m.textMute)
+                    Text(v?.businessName ?: "Your business", style = Type.headingSm, color = m.text)
+                    Text(listOfNotNull(v?.ownerName.nilIfEmpty(), v?.area.nilIfEmpty(), v?.since.nilIfEmpty()).joinToString(" · "), style = Type.caption, color = m.textMute)
                 }
                 Chevron()
             }
         }
         RowGroup {
-            ProfileRow(Icons.Outlined.Groups, "Team", "${store.crew.size + 1} members · ${store.crew.count { it.role == CrewRole.COORDINATOR }} coordinators") { nav.push(Routes.crew) }
+            ProfileRow(Icons.Outlined.Groups, "Team", "${store.crew.size} crew · ${store.crew.count { it.role == CrewRole.COORDINATOR }} coordinators") { nav.push(Routes.crew) }
             Hairline(68.dp)
-            ProfileRow(Icons.Outlined.Person, "Clients", "${store.clients.size} clients · $repeat repeat") { nav.push(Routes.clients) }
+            ProfileRow(Icons.Outlined.Person, "Clients", if (store.clients.isEmpty()) "None yet" else "${store.clients.size} clients · $repeat repeat") { nav.push(Routes.clients) }
             Hairline(68.dp)
-            ProfileRow(Icons.Outlined.Layers, "Package templates", "${Seed.packages.size + 2} templates · from ${Fmt.inr(Seed.packages.minOf { it.price })}") { store.show(Toast.Kind.INFO, "Templates are coming with the next release") }
+            ProfileRow(Icons.Outlined.Layers, "Package templates", if (store.packages.isEmpty()) "None yet" else "${store.packages.size} templates · from ${Fmt.inr(store.packages.minOf { it.price })}") { nav.push(Routes.packages) }
             Hairline(68.dp)
-            ProfileRow(Icons.Outlined.CreditCard, "Payment details", "UPI ${Seed.upi} · ${Seed.bank}") { store.show(Toast.Kind.INFO, "Payment details are managed by your accountant") }
+            ProfileRow(Icons.Outlined.CreditCard, "Payment details", listOfNotNull(v?.upi.nilIfEmpty()?.let { "UPI $it" }, v?.bankLabel.nilIfEmpty()).joinToString(" · ").ifEmpty { "Add your UPI ID" }) { paymentSheet = true }
             Hairline(68.dp)
             ProfileRow(Icons.Outlined.LightMode, "Appearance", if (store.appearance == Appearance.SYSTEM) "${if (m.isDark) "Dark" else "Light"} · follows system" else store.appearance.label) { appearanceSheet = true }
             Hairline(68.dp)
-            ProfileRow(Icons.Outlined.NotificationsNone, "Notifications", "Payments, conflicts, change requests") { store.show(Toast.Kind.INFO, "All three alert types are on") }
+            ProfileRow(Icons.Outlined.NotificationsNone, "Notifications", notifySummary(v)) { notifySheet = true }
+            Hairline(68.dp)
+            ProfileRow(if (store.auth.isCloud) Icons.Outlined.Cloud else Icons.Outlined.PhoneAndroid, "Account", account?.let { it.providerLabel + (it.email?.let { e -> " · $e" } ?: "") } ?: "") { nav.push(Routes.account) }
         }
+        Text("Mehfil ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = Type.caption, color = m.textMute, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
     if (appearanceSheet) ModalBottomSheet(onDismissRequest = { appearanceSheet = false }, containerColor = m.surface) {
         SheetContent("Appearance", actions = { MButton("Done", { appearanceSheet = false }) }) {
@@ -112,98 +129,156 @@ fun ProfileScreen(store: AppStore, nav: Nav) {
             }
         }
     }
+    if (businessSheet) BusinessProfileSheet(store) { businessSheet = false }
+    if (paymentSheet) PaymentDetailsSheet(store) { paymentSheet = false }
+    if (notifySheet) NotificationsSheet(store) { notifySheet = false }
+}
+
+private fun notifySummary(v: VendorProfile?): String {
+    if (v == null) return ""
+    val on = listOfNotNull(if (v.notifyPayments) "Payments" else null, if (v.notifyConflicts) "conflicts" else null, if (v.notifyChanges) "change requests" else null)
+    return if (on.isEmpty()) "All off" else on.joinToString(", ")
 }
 
 @Composable
-private fun ProfileRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun ProfileRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     ListRow(title, subtitle = subtitle, onClick = onClick, leading = { IconTile(icon) }) { Chevron() }
 }
 
+/** Package templates — the menu the create-event flow picks from. */
+@Composable
+fun PackagesScreen(store: AppStore, nav: Nav) {
+    val m = M
+    var editing by remember { mutableStateOf<Package?>(null) }
+    var adding by remember { mutableStateOf(false) }
+    Screen(title = "Package templates", subtitle = if (store.packages.isEmpty()) "None yet" else "${store.packages.size} templates", onBack = nav::back, spacing = Space.lg,
+        docked = { MButton("New package", { adding = true }, kind = ButtonKind.SECONDARY, icon = Icons.Outlined.Add) }) {
+        if (store.packages.isEmpty()) EmptyState("No packages yet", "Templates make quoting a new event a three-tap job.", Modifier.padding(top = 120.dp), "New package", Icons.Outlined.Add, true) { adding = true }
+        else RowGroup {
+            store.packages.forEachIndexed { i, p ->
+                if (i > 0) Hairline()
+                ListRow(p.name, subtitle = p.detail, onClick = { editing = p }) { Text(Fmt.inr(p.price), style = Type.bodyTabularStrong, color = m.text); Chevron() }
+            }
+        }
+    }
+    if (adding) PackageSheet(store, null) { adding = false }
+    editing?.let { p -> PackageSheet(store, p) { editing = null } }
+}
+
 /** E1 · Client list — search, rows with event count and lifetime value; repeat clients carry a marker. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ClientListScreen(store: AppStore, nav: Nav) {
     val m = M
     var query by remember { mutableStateOf("") }
-    val list = store.clients.filter { query.isBlank() || it.name.contains(query, true) || it.phone.contains(query) }.sortedByDescending { it.lifetimeValue }
-    val lifetime = store.clients.sumOf { it.lifetimeValue }
+    var editing by remember { mutableStateOf<Client?>(null) }
+    val list = store.clients.filter { query.isBlank() || it.name.contains(query, true) || it.phone.contains(query) }.sortedByDescending { store.stats(it).lifetimeValue }
+    val lifetime = store.lifetimeValue
     val repeat = store.clients.count { it.isRepeat }
     Screen(
         title = "Clients", subtitle = if (store.clients.isEmpty()) "No clients yet" else "${store.clients.size} clients · ${Fmt.inr(lifetime)} lifetime", onBack = nav::back, spacing = Space.lg,
-        actions = { CircleAction(Icons.Outlined.Add, { nav.push(Routes.enquiry) }, tint = m.accentText) },
+        actions = { CircleAction(Icons.Outlined.Add, { nav.push(Routes.enquiry()) }, tint = m.accentText, contentDescription = "New enquiry") },
     ) {
-        InputField("Search", query, { query = it }, placeholder = "Search by name or phone", trailing = Icons.Outlined.Search)
-        if (store.clients.isEmpty()) EmptyState("No clients yet", "Each client is added with their first event or enquiry.", Modifier.padding(top = 140.dp), "Create event") { nav.pushIn(Tab.EVENTS, Routes.create) }
+        if (store.clients.isEmpty()) EmptyState("No clients yet", "Each client is added with their first event or enquiry.", Modifier.padding(top = 140.dp), "Create event", Icons.Outlined.Add, true) { nav.pushIn(Tab.EVENTS, Routes.create) }
         else {
+            InputField("Search", query, { query = it }, placeholder = "Search by name or phone", trailing = Icons.Outlined.Search)
             Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
                 StatTile("$repeat of ${store.clients.size}", "Repeat clients", Modifier.weight(1f))
-                StatTile(Fmt.inr(if (store.clients.isEmpty()) 0 else lifetime / store.clients.size / 100 * 100), "Average lifetime value", Modifier.weight(1f))
+                StatTile(Fmt.inr(lifetime / store.clients.size / 100 * 100), "Average lifetime value", Modifier.weight(1f))
             }
             RowGroup {
                 list.forEachIndexed { i, c ->
                     if (i > 0) Hairline(68.dp)
-                    ListRow(c.name, subtitle = "${c.eventCount} event${if (c.eventCount == 1) "" else "s"}" + (c.nextEventDate?.let { " · next ${Fmt.dayMonth(it)}" } ?: ""),
-                        onClick = { (store.upcomingEvents.firstOrNull { it.clientId == c.id } ?: store.events.firstOrNull { it.clientId == c.id })?.let { nav.push(Routes.event(it.id)) } },
-                        leading = { Avatar(c.avatar, c.name) }) {
-                        if (c.isRepeat) Icon(Icons.Outlined.StarBorder, null, Modifier.size(14.dp), tint = m.accentText)
-                        Text(Fmt.inr(c.lifetimeValue), style = Type.bodyTabularStrong, color = m.text)
-                        Chevron()
+                    val s = store.stats(c)
+                    Box(Modifier.combinedClickable(onClick = {
+                        (store.upcomingEvents.firstOrNull { it.clientId == c.id } ?: store.events.firstOrNull { it.clientId == c.id })?.let { nav.push(Routes.event(it.id)) } ?: run { editing = c }
+                    }, onLongClick = { editing = c })) {
+                        ListRow(c.name, subtitle = "${s.eventCount} event${if (s.eventCount == 1) "" else "s"}" + (s.nextEventDate?.let { " · next ${Fmt.dayMonth(it)}" } ?: ""), leading = { Avatar(c.avatar, c.name) }) {
+                            if (c.isRepeat) Icon(Icons.Outlined.StarBorder, null, Modifier.size(14.dp), tint = m.accentText)
+                            Text(Fmt.inr(s.lifetimeValue), style = Type.bodyTabularStrong, color = m.text)
+                            Chevron()
+                        }
                     }
                 }
             }
+            Text("Long-press a client to edit their details.", style = Type.caption, color = m.textMute)
         }
     }
+    editing?.let { c -> ClientSheet(store, c) { editing = null } }
 }
 
 /** E3 · Enquiry intake — conflict check on the tentative date, convert to event. */
 @Composable
-fun EnquiryIntakeScreen(store: AppStore, nav: Nav) {
+fun EnquiryIntakeScreen(store: AppStore, nav: Nav, enquiryId: String?) {
     val m = M
-    var name by remember { mutableStateOf(Seed.enquiry.name) }
-    var source by remember { mutableStateOf(Seed.enquiry.source) }
-    var budget by remember { mutableStateOf(Seed.enquiry.budget) }
-    var date by remember { mutableStateOf<LocalDate?>(Seed.enquiry.date) }
-    var guests by remember { mutableStateOf(Seed.enquiry.guests) }
-    var notes by remember { mutableStateOf(Seed.enquiry.notes) }
+    val existing = remember(enquiryId) { enquiryId?.let { store.enquiry(it) } }
+    var name by remember { mutableStateOf(existing?.name ?: "") }
+    var phone by remember { mutableStateOf(existing?.phone ?: "") }
+    var source by remember { mutableStateOf(existing?.source ?: SampleSeason.enquirySources[0]) }
+    var budget by remember { mutableStateOf(existing?.budget ?: SampleSeason.budgetRanges[2]) }
+    var date by remember { mutableStateOf<LocalDate?>(existing?.date) }
+    var guests by remember { mutableStateOf(existing?.guests ?: 200) }
+    var notes by remember { mutableStateOf(existing?.notes ?: "") }
     var showDate by remember { mutableStateOf(false) }; var showSource by remember { mutableStateOf(false) }; var showBudget by remember { mutableStateOf(false) }
     val conflicts = date?.let { store.eventsOn(it) }.orEmpty()
+    val canSave = name.isNotBlank()
+    fun save(): String {
+        val q = Enquiry(existing?.id ?: Cal.newId(), name.trim(), phone, source, budget, date, guests, notes, existing?.status ?: EnquiryStatus.OPEN, existing?.createdAt ?: Cal.today)
+        store.saveEnquiry(q); return q.id
+    }
     Screen(
-        title = "New enquiry", largeTitle = false, onBack = nav::back, spacing = Space.lg,
-        actions = { Text("Save", style = Type.buttonSm, color = m.accentText, modifier = Modifier.clickable { store.show(Toast.Kind.SUCCESS, "Enquiry saved"); nav.back() }.padding(Space.sm)) },
+        title = if (existing == null) "New enquiry" else "Enquiry", largeTitle = false, onBack = nav::back, spacing = Space.lg,
+        actions = { Text("Save", style = Type.buttonSm, color = if (canSave) m.accentText else m.disabledText, modifier = Modifier.clickable(enabled = canSave) { save(); nav.back() }.padding(Space.sm)) },
         docked = {
             MButton("Convert to event", {
-                store.updateDraft { EventDraft(clientName = name, type = EventType.ENGAGEMENT, date = date, guests = guests) }
+                val id = save()
+                store.replaceDraft(EventDraft(clientName = name.trim(), phone = phone, type = null, date = date, venue = "", guests = guests, packageIds = emptySet(), quoted = 0, fromEnquiryId = id))
                 nav.back(); nav.pushIn(Tab.EVENTS, Routes.create)
-            }, enabled = name.isNotBlank())
+            }, enabled = canSave)
         },
     ) {
         InputField("Name", name, { name = it }, placeholder = "Who is asking")
+        InputField("Phone", phone, { phone = it }, placeholder = "98100 00000", keyboard = KeyboardType.Phone)
         PickerField("Source", source, { showSource = true })
         PickerField("Budget range", budget, { showBudget = true })
         PickerField("Tentative date", date?.let { Fmt.weekdayLongYear(it) } ?: "", { showDate = true }, placeholder = "Pick a date", trailing = Icons.Outlined.CalendarToday, highlighted = date != null)
-        if (date != null && conflicts.isNotEmpty()) {
+        val d = date
+        if (d != null && conflicts.isNotEmpty()) {
             val c = conflicts[0]
-            InlineConflictWarning(if (conflicts.size == 1) "${c.name} runs that evening at ${c.venue.name} with ${c.crewAssigned} crew." else "${conflicts.size} events already run on ${Fmt.dayMonth(date!!)}.", conflicts, "See ${Fmt.dayMonth(date!!)} timeline") { nav.push(Routes.day(date!!)) }
+            InlineConflictWarning(if (conflicts.size == 1) "${c.name} runs ${if (Cal.hour(c.start) >= 17) "that evening" else "that day"} at ${c.venue.name} with ${c.crewAssigned} crew." else "${conflicts.size} events already run on ${Fmt.dayMonth(d)}.", conflicts, "See ${Fmt.dayMonth(d)} timeline") { nav.push(Routes.day(d)) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) { Text("Guest estimate", style = Type.bodyMd, color = m.text); Text("Rough is fine", style = Type.caption, color = m.textMute) }
             MStepper(guests, { guests = it }, range = 10..5000)
         }
         InputField("Notes", notes, { notes = it }, singleLine = false, minHeight = 72.dp)
+        if (existing != null && existing.status == EnquiryStatus.OPEN) MButton("Close enquiry", { store.closeEnquiry(existing.id); nav.back() }, kind = ButtonKind.TERTIARY, compact = true)
     }
-    if (showSource) ChoiceSheet("Source", Seed.enquirySources, source, { it }, { source = it }) { showSource = false }
-    if (showBudget) ChoiceSheet("Budget range", Seed.budgetRanges, budget, { it }, { budget = it }) { showBudget = false }
-    if (showDate) DateSheet("Tentative date", "Conflicts are checked as soon as you pick.", date ?: LocalDate.of(2026, 12, 5), { date = it }) { showDate = false }
+    if (showSource) ChoiceSheet("Source", SampleSeason.enquirySources, source, { it }, { source = it }) { showSource = false }
+    if (showBudget) ChoiceSheet("Budget range", SampleSeason.budgetRanges, budget, { it }, { budget = it }) { showBudget = false }
+    if (showDate) DateSheet("Tentative date", "Conflicts are checked as soon as you pick.", date ?: Cal.nextSaturday, { date = it }, { showDate = false }, minDate = Cal.todayDate)
 }
 
 /** E2 · Shared event page — the client's read-only page. Cream ground, the only gradient mesh, always light. */
 @Composable
 fun SharedEventPageScreen(store: AppStore, nav: Nav, eventId: String) {
     val e = store.event(eventId) ?: return
-    val client = store.clientFor(e) ?: return
+    val v = store.vendor ?: return
     val collected = store.collected(e.id)
     val due = store.milestonesFor(e.id).filter { it.isOpen }
+    val holds = store.inventory.mapNotNull { item -> item.holds.firstOrNull { it.eventId == e.id }?.let { item.name to it.qty } }
+    val packages = store.packages
     val ctx = LocalContext.current
     val ink = Palette.ink; val mute = Palette.inkMute
+    fun dueLine() = due.joinToString(" · ") { "${Fmt.inr(it.amount)} ${if (it.due <= Cal.todayDate) "due now" else if (it.kind == MilestoneKind.BALANCE) "on the day" else "by ${Fmt.dayMonth(it.due)}"}" }.ifEmpty { "Fully paid — thank you" }
+    fun shareBody(): String {
+        var s = "${v.businessName} · for the ${e.surname} family\n\n${e.name}\n${Fmt.weekdayLong(e.day)} · from ${Fmt.time(e.start)}\n${listOfNotNull(e.venue.short, e.venue.hall).joinToString(" · ")}\n"
+        s += "\nReceived ${Fmt.inr(collected)} of ${Fmt.inr(e.quoted)}"
+        if (due.isNotEmpty()) s += "\n" + due.joinToString(" · ") { "${Fmt.inr(it.amount)} ${if (it.due <= Cal.todayDate) "due now" else "by ${Fmt.dayMonth(it.due)}"}" }
+        if (v.upi.isNotBlank()) s += "\nUPI ${v.upi}"
+        s += "\n\n${v.ownerName} · ${v.phone}"
+        return s
+    }
     Box(Modifier.fillMaxSize().background(Palette.canvasCream)) {
         // Mesh: documented hues at alpha over canvas-cream (tokens.css --color-mesh-*)
         Box(Modifier.fillMaxWidth().height(420.dp).background(Brush.radialGradient(listOf(Palette.primarySubdued.copy(alpha = 0.85f), Color.Transparent), center = androidx.compose.ui.geometry.Offset(900f, 120f), radius = 900f)))
@@ -216,40 +291,40 @@ fun SharedEventPageScreen(store: AppStore, nav: Nav, eventId: String) {
             Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = Dim.gutter), verticalAlignment = Alignment.CenterVertically) {
                 CircleAction(Icons.AutoMirrored.Outlined.ArrowBack, nav::back, tint = ink, contentDescription = "Back")
                 Spacer(Modifier.weight(1f))
-                CircleAction(Icons.Outlined.IosShare, {
-                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, "Your ${e.type.word} plan from ${Seed.businessName}: https://mehfil.app/e/${e.id}") }
-                    ctx.startActivity(android.content.Intent.createChooser(send, e.name))
-                }, tint = ink, contentDescription = "Share")
+                CircleAction(Icons.Outlined.IosShare, { shareText(ctx, e.name, shareBody()) }, tint = ink, contentDescription = "Share")
             }
             Column(Modifier.padding(horizontal = Space.xl).padding(top = Space.lg, bottom = Space.xxl), verticalArrangement = Arrangement.spacedBy(Space.xl)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    Text("${Seed.businessName.uppercase()} · FOR THE ${e.surname.uppercase()} FAMILY", style = Type.microCap.copy(letterSpacing = androidx.compose.ui.unit.TextUnit(0.6f, androidx.compose.ui.unit.TextUnitType.Sp)), color = mute)
+                    Text("${v.businessName.uppercase()} · FOR THE ${e.surname.uppercase()} FAMILY", style = Type.microCap.copy(letterSpacing = androidx.compose.ui.unit.TextUnit(0.6f, androidx.compose.ui.unit.TextUnitType.Sp)), color = mute)
                     Text(e.name, style = Type.displayHero, color = ink)
                     Text("${Fmt.weekdayLong(e.day)} · from ${Fmt.time(e.start)}", style = Type.bodyLg, color = ink)
                     Text(listOfNotNull(e.venue.short, e.venue.hall).joinToString(" · "), style = Type.bodyLg, color = Palette.inkSecondary)
                 }
                 SharedSection("What we are bringing") {
-                    SharedLine("Stage with 12 m floral backdrop", "40 lights"); SharedLine("Marigold and jasmine mandap", "fresh")
-                    SharedLine("Velvet ceiling drapes, 120 panels", "ivory"); SharedLine("Seating for ${e.guests} with ${store.item("tables")?.holds?.firstOrNull { it.eventId == e.id }?.qty ?: 45} round tables", "")
+                    if (holds.isEmpty() && packages.isEmpty()) SharedLine("Full décor as quoted", "")
+                    packages.take(4).forEach { SharedLine(it.name, it.detail) }
+                    holds.forEach { (n, q) -> SharedLine("$q ${n.lowercase()}", "") }
+                    SharedLine("Seating for ${e.guests} guests", "")
                 }
                 SharedSection("On the day") {
-                    SharedLine("Setup begins", "09:00"); SharedLine("Venue ready for your walkthrough", "16:30"); SharedLine("Guests arrive", Fmt.time(e.start)); SharedLine("Pack-down", Fmt.time(e.end))
+                    SharedLine("Setup begins", Fmt.time(e.start.minusHours(8))); SharedLine("Venue ready for your walkthrough", Fmt.time(e.start.minusMinutes(30)))
+                    SharedLine("Guests arrive", Fmt.time(e.start)); SharedLine("Pack-down", Fmt.time(e.end))
                 }
                 Column(Modifier.fillMaxWidth().clip(CardShape).background(Palette.canvasCream).border(1.dp, Palette.lemon.copy(alpha = 0.25f), CardShape).padding(Space.lg), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                     Row { Text("Received", style = Type.bodyLg, color = ink, modifier = Modifier.weight(1f)); Text("${Fmt.inr(collected)} of ${Fmt.inr(e.quoted)}", style = Type.bodyLg, color = ink) }
                     ProgressBar(collected.toFloat() / maxOf(1, e.quoted), Modifier.height(4.dp), tint = ink)
-                    Text(due.joinToString(" · ") { "${Fmt.inr(it.amount)} ${if (it.due <= Cal.todayDate) "due now" else if (it.kind == MilestoneKind.BALANCE) "on the day" else "by ${Fmt.dayMonth(it.due)}"}" } + " · UPI ${Seed.upi}", style = Type.caption, color = mute)
+                    Text(dueLine() + if (v.upi.isBlank()) "" else " · UPI ${v.upi}", style = Type.caption, color = mute)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                     listOf(R.drawable.mood_1, R.drawable.mood_2, R.drawable.mood_3).forEach { Image(painterResource(it), null, Modifier.weight(1f).aspectRatio(4f / 3f).clip(RoundedCornerShape(Radius.sm)), contentScale = ContentScale.Crop) }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                    Box(Modifier.size(36.dp).clip(RoundedCornerShape(Radius.sm)).background(Palette.brandDark), contentAlignment = Alignment.Center) { Text("M", style = Type.headingSm, color = Palette.onPrimary) }
+                    Box(Modifier.size(36.dp).clip(RoundedCornerShape(Radius.sm)).background(Palette.brandDark), contentAlignment = Alignment.Center) { Text(v.monogram, style = Type.headingSm, color = Palette.onPrimary) }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("${Seed.vendorName} · ${Seed.businessName}", style = Type.bodyMdStrong, color = ink, maxLines = 1)
-                        Text("${Seed.businessPhone} · ${Seed.businessArea}", style = Type.caption, color = mute, maxLines = 1)
+                        Text("${v.ownerName} · ${v.businessName}", style = Type.bodyMdStrong, color = ink, maxLines = 1)
+                        Text(listOfNotNull(v.phone.nilIfEmpty(), v.area.nilIfEmpty()).joinToString(" · "), style = Type.caption, color = mute, maxLines = 1)
                     }
-                    Row(Modifier.height(40.dp).clip(CircleShape).border(1.dp, ink, CircleShape).clickable { whatsapp(ctx, Seed.businessPhone) }.padding(horizontal = Space.md), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                    if (v.phone.isNotBlank()) Row(Modifier.height(40.dp).clip(CircleShape).border(1.dp, ink, CircleShape).clickable { whatsapp(ctx, v.phone) }.padding(horizontal = Space.md), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
                         Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(16.dp), tint = ink); Text("Chat", style = Type.buttonSm, color = ink)
                     }
                 }
