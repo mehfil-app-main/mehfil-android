@@ -51,6 +51,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.mehfil.app.BuildConfig
 import com.mehfil.app.R
+import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.Verified
+import com.mehfil.app.model.AuthService
+import com.mehfil.app.model.Fmt
 import com.mehfil.app.model.Account
 import com.mehfil.app.model.AppStore
 import com.mehfil.app.model.AuthCancelled
@@ -88,6 +92,7 @@ fun WelcomeScreen(store: AppStore) {
     val uri = LocalUriHandler.current
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var phoneSheet by remember { mutableStateOf(false) }
     fun run(work: suspend () -> Unit) { error = null; busy = true; scope.launch { try { work() } catch (_: AuthCancelled) {} catch (e: Exception) { error = e.message ?: "Sign-in failed" }; busy = false } }
 
     Box(Modifier.fillMaxSize().background(m.ground)) {
@@ -111,6 +116,10 @@ fun WelcomeScreen(store: AppStore) {
                         Modifier.fillMaxWidth().height(Dim.button).clip(CircleShape).background(m.surface).border(1.dp, m.lineInput, CircleShape).clickable(enabled = !busy) { run { auth.signInWithGoogle(activity) } },
                         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                     ) { GoogleMark(); Spacer(Modifier.size(Space.sm)); Text("Continue with Google", style = Type.buttonMd, color = m.text) }
+                    Row(
+                        Modifier.fillMaxWidth().height(Dim.button).clip(CircleShape).background(m.surface).border(1.dp, m.lineInput, CircleShape).clickable(enabled = !busy) { phoneSheet = true },
+                        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+                    ) { Icon(Icons.Outlined.Phone, null, Modifier.size(18.dp), tint = m.text); Spacer(Modifier.size(Space.sm)); Text("Continue with mobile number", style = Type.buttonMd, color = m.text) }
                     // Apple on Android goes through Firebase's web flow, which needs the Services ID from backend/README step 5.
                     // Off until APPLE_SIGN_IN is flipped in app/build.gradle.kts, so the button never shows before it can work.
                     if (BuildConfig.APPLE_SIGN_IN) Row(
@@ -133,6 +142,7 @@ fun WelcomeScreen(store: AppStore) {
         }
         if (busy) Box(Modifier.fillMaxSize().background(m.scrim), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) }
     }
+    if (phoneSheet) PhoneVerifySheet(store, AuthService.PhoneIntent.SIGN_IN, onVerified = {}, onDismiss = { phoneSheet = false })
 }
 
 @Composable
@@ -155,23 +165,29 @@ fun OnboardingScreen(store: AppStore, account: Account) {
     val scope = rememberCoroutineScope()
     var owner by remember { mutableStateOf(account.name ?: "") }
     var business by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
+    // Signed in with the number, or linked it earlier → already verified.
+    var phone by remember { mutableStateOf(account.phone ?: "") }
+    var phoneVerified by remember { mutableStateOf(account.phone != null) }
+    var verifySheet by remember { mutableStateOf(false) }
     var area by remember { mutableStateOf("") }
     var loadSample by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
+    val cloud = store.auth.isCloud
     Screen(
-        title = "Set up your business", subtitle = "Signed in with ${account.providerLabel}" + (account.email?.let { " · $it" } ?: ""), isRoot = true, spacing = Space.lg,
+        title = "Set up your business", subtitle = "Signed in with ${account.providerLabel}" + (account.email?.let { " · $it" } ?: account.phone?.let { " · ${Fmt.phone(it)}" } ?: ""), isRoot = true, spacing = Space.lg,
         headerTrailing = { Text("Sign out", style = Type.buttonSm, color = m.accentText, modifier = Modifier.clickable { scope.launch { store.auth.signOut() } }.padding(Space.sm)) },
         docked = {
             MButton("Open Mehfil", {
                 saving = true
-                scope.launch { store.completeOnboarding(VendorProfile(owner.trim(), business.trim(), phone, area, "since ${java.time.LocalDate.now().year}"), loadSample); saving = false }
-            }, enabled = owner.isNotBlank() && business.isNotBlank(), loading = saving)
+                scope.launch { store.completeOnboarding(VendorProfile(owner.trim(), business.trim(), phone, area, "since ${java.time.LocalDate.now().year}", phoneVerified = phoneVerified), loadSample); saving = false }
+            }, enabled = owner.isNotBlank() && business.isNotBlank() && (phone.isEmpty() || phoneVerified), loading = saving)
         },
     ) {
         InputField("Your name", owner, { owner = it }, placeholder = "Anand Mehra")
         InputField("Business name", business, { business = it }, placeholder = "Mehfil Decor")
-        InputField("Phone", phone, { phone = it }, placeholder = "98110 08123", keyboard = androidx.compose.ui.text.input.KeyboardType.Phone)
+        // Numbers are only stored once an OTP has confirmed them (and linked them to the account).
+        if (cloud) PhoneRow(phone, phoneVerified) { verifySheet = true }
+        else InputField("Phone", phone, { phone = it }, placeholder = "98110 08123", keyboard = androidx.compose.ui.text.input.KeyboardType.Phone)
         InputField("Area", area, { area = it }, placeholder = "Sector 44, Gurugram")
         Row(Modifier.fillMaxWidth().padding(top = Space.sm), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -181,6 +197,7 @@ fun OnboardingScreen(store: AppStore, account: Account) {
             Switch(loadSample, { loadSample = it }, colors = SwitchDefaults.colors(checkedTrackColor = m.accent))
         }
     }
+    if (verifySheet) PhoneVerifySheet(store, if (account.phone == null) AuthService.PhoneIntent.LINK else AuthService.PhoneIntent.UPDATE, phone, onVerified = { phone = it; phoneVerified = true }, onDismiss = { verifySheet = false })
 }
 
 /** Account — who is signed in, sign out, erase data, delete the account (Play's account-deletion requirement). */
@@ -195,14 +212,21 @@ fun AccountScreen(store: AppStore, nav: Nav) {
     val uri = LocalUriHandler.current
     var confirmErase by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var phoneSheet by remember { mutableStateOf(false) }
+    var reauthSheet by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     fun perform(work: suspend () -> Unit) { error = null; busy = true; scope.launch { try { work() } catch (_: AuthCancelled) {} catch (e: Exception) { error = e.message }; busy = false } }
 
     Box {
-        Screen(title = "Account", subtitle = account?.let { it.providerLabel + (it.email?.let { e -> " · $e" } ?: "") }, onBack = nav::back, spacing = Space.lg) {
+        Screen(title = "Account", subtitle = account?.let { it.providerLabel + (it.email?.let { e -> " · $e" } ?: it.phone?.let { p -> " · ${Fmt.phone(p)}" } ?: "") }, onBack = nav::back, spacing = Space.lg) {
             RowGroup {
-                ListRow(account?.name ?: store.vendor?.ownerName ?: "You", subtitle = account?.email ?: if (auth.isCloud) "Signed in" else "On this device only", leading = { IconTile(Icons.Outlined.Person) })
+                ListRow(account?.name ?: store.vendor?.ownerName ?: "You", subtitle = account?.email ?: account?.phone?.let { Fmt.phone(it) } ?: if (auth.isCloud) "Signed in" else "On this device only", leading = { IconTile(Icons.Outlined.Person) })
+                if (auth.isCloud) {
+                    Hairline(68.dp)
+                    ListRow("Mobile number", subtitle = account?.phone?.let { "${Fmt.phone(it)} · verified" } ?: "Add and verify with an OTP", onClick = { phoneSheet = true },
+                        leading = { IconTile(if (account?.phone == null) Icons.Outlined.Phone else Icons.Outlined.Verified) }) { Text(if (account?.phone == null) "Add" else "Change", style = Type.buttonSm, color = m.accentText) }
+                }
                 Hairline(68.dp)
                 ListRow("Storage", subtitle = if (auth.isCloud) "Synced to your Mehfil cloud account" else "This device — not backed up", leading = { IconTile(if (auth.isCloud) Icons.Outlined.Cloud else Icons.Outlined.PhoneAndroid) })
             }
@@ -213,7 +237,7 @@ fun AccountScreen(store: AppStore, nav: Nav) {
             }
             Column(Modifier.padding(top = Space.md), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 MButton("Sign out", { scope.launch { auth.signOut() } }, kind = ButtonKind.SECONDARY)
-                MButton("Delete account", { confirmDelete = true }, kind = ButtonKind.DESTRUCTIVE)
+                MButton("Delete account", { if (account?.provider == "phone") reauthSheet = true else confirmDelete = true }, kind = ButtonKind.DESTRUCTIVE)
                 if (error != null) Text(error!!, style = Type.caption, color = m.danger, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             }
             Text("Deleting removes your account and every event, client, crew member and payment record. It cannot be undone.", style = Type.caption, color = m.textMute)
@@ -224,6 +248,9 @@ fun AccountScreen(store: AppStore, nav: Nav) {
         }
         if (busy) Box(Modifier.fillMaxSize().background(m.scrim), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) }
     }
+    if (phoneSheet) PhoneVerifySheet(store, if (account?.phone == null) AuthService.PhoneIntent.LINK else AuthService.PhoneIntent.UPDATE, account?.phone ?: "",
+        onVerified = { v -> store.updateProfile { it.copy(phone = v, phoneVerified = true) } }, onDismiss = { phoneSheet = false })
+    if (reauthSheet) PhoneVerifySheet(store, AuthService.PhoneIntent.REAUTH, account?.phone ?: "", onVerified = { confirmDelete = true }, onDismiss = { reauthSheet = false })
     if (confirmErase) ModalBottomSheet(onDismissRequest = { confirmErase = false }, containerColor = m.surface) {
         SheetContent("Erase everything in ${store.vendor?.businessName ?: "Mehfil"}?", "Every event, client, crew member, item and payment record goes. Your account and profile stay.", actions = {
             MButton("Erase all data", { confirmErase = false; perform { store.eraseAllData(); store.show(Toast.Kind.INFO, "All data erased") } }, kind = ButtonKind.DESTRUCTIVE)

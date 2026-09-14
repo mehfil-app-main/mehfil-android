@@ -38,6 +38,21 @@ object Cal {
 }
 
 object Fmt {
+    /** "+919811008123" → "+91 98110 08123"; anything else is returned as typed. */
+    fun phone(e164: String): String {
+        val digits = e164.filter { it.isDigit() }
+        if (e164.startsWith("+91") && digits.length == 12) { val n = digits.drop(2); return "+91 ${n.take(5)} ${n.drop(5)}" }
+        if (digits.length == 10 && !e164.startsWith("+")) return "${digits.take(5)} ${digits.drop(5)}"
+        return e164
+    }
+    /** Digits for wa.me / tel: links — a bare 10-digit Indian number gets the 91 prefix. */
+    fun phoneDigits(phone: String): String { val d = phone.filter { it.isDigit() }; return if (d.length == 10) "91$d" else d }
+    /** E.164 from a dialling code and a local number; null when it can't be one. */
+    fun e164(code: String, number: String): String? {
+        val c = code.filter { it.isDigit() }; val n = number.filter { it.isDigit() }
+        return if (c.length in 1..3 && n.length in 6..12) "+$c$n" else null
+    }
+
     /** Indian digit grouping: ₹23,47,500 — never ₹2,347,500 (spec §6). */
     fun inr(amount: Int, symbol: Boolean = true): String {
         val s = abs(amount).toString()

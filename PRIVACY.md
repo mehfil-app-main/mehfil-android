@@ -6,7 +6,8 @@ Mehfil is an operations app for wedding-service vendors. This policy explains wh
 
 ## What we collect
 - **Account details** — when you sign in with Apple or Google we receive your name and email address (Apple may
-  provide a private relay address). These identify your account and are shown in Profile → Account.
+  provide a private relay address). If you sign in with, or add, a mobile number, we store that number and send a
+  one-time code by SMS to confirm it. These identify your account and are shown in Profile → Account.
 - **Business data you enter** — events, clients and their phone numbers, crew, inventory, payments, expenses,
   enquiries and change requests. This is your data; Mehfil stores it so it is available on your devices.
 - **App settings** — appearance preference and an unsaved event draft, stored only on your device.

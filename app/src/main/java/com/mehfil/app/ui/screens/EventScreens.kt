@@ -256,12 +256,12 @@ fun paymentSubtitle(m: Milestone): String = when (m.effectiveStatus) {
     MilestoneStatus.PENDING -> "Due ${Fmt.weekdayDayMonth(m.due)} · ${Fmt.relativeDays(m.due)}"
 }
 
-fun dial(ctx: android.content.Context, phone: String) = runCatching { if (phone.isNotBlank()) ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:${phone.replace(" ", "")}"))) }
+fun dial(ctx: android.content.Context, phone: String) = runCatching { if (phone.isNotBlank()) ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:+${Fmt.phoneDigits(phone)}"))) }
 fun whatsapp(ctx: android.content.Context, phone: String, text: String = "") = runCatching {
-    if (phone.isNotBlank()) ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://wa.me/91${phone.replace(" ", "")}" + if (text.isEmpty()) "" else "?text=${android.net.Uri.encode(text)}")))
+    if (phone.isNotBlank()) ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://wa.me/${Fmt.phoneDigits(phone)}" + if (text.isEmpty()) "" else "?text=${android.net.Uri.encode(text)}")))
 }
 fun sms(ctx: android.content.Context, phone: String, text: String) = runCatching {
-    if (phone.isNotBlank()) ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:${phone.replace(" ", "")}")).putExtra("sms_body", text))
+    if (phone.isNotBlank()) ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:+${Fmt.phoneDigits(phone)}")).putExtra("sms_body", text))
 }
 fun shareText(ctx: android.content.Context, subject: String, text: String) = runCatching {
     ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(android.content.Intent.EXTRA_SUBJECT, subject); putExtra(android.content.Intent.EXTRA_TEXT, text) }, subject))

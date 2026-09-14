@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.mehfil.app.model.*
+import com.mehfil.app.model.AuthService
 import com.mehfil.app.ui.components.*
 import com.mehfil.app.ui.theme.M
 import com.mehfil.app.ui.theme.Space
@@ -136,20 +137,23 @@ fun BusinessProfileSheet(store: AppStore, onDismiss: () -> Unit) {
     val v = store.vendor
     var owner by remember { mutableStateOf(v?.ownerName ?: "") }; var business by remember { mutableStateOf(v?.businessName ?: "") }
     var phone by remember { mutableStateOf(v?.phone ?: "") }; var area by remember { mutableStateOf(v?.area ?: "") }
+    var phoneVerified by remember { mutableStateOf(v?.phoneVerified ?: false) }; var verifySheet by remember { mutableStateOf(false) }
     var since by remember { mutableStateOf(v?.since ?: "") }; var target by remember { mutableStateOf(v?.seasonTarget?.toString() ?: "") }
     EditSheet(onDismiss) {
         SheetContent("Business details", actions = {
-            MButton("Save", { store.updateProfile { it.copy(businessName = business.trim(), ownerName = owner.trim(), phone = phone, area = area, since = since, seasonTarget = target.filter(Char::isDigit).toIntOrNull() ?: it.seasonTarget) }; onDismiss() },
+            MButton("Save", { store.updateProfile { it.copy(businessName = business.trim(), ownerName = owner.trim(), phone = phone, phoneVerified = phoneVerified, area = area, since = since, seasonTarget = target.filter(Char::isDigit).toIntOrNull() ?: it.seasonTarget) }; onDismiss() },
                 enabled = business.isNotBlank() && owner.isNotBlank())
         }) {
             InputField("Business name", business, { business = it })
             InputField("Your name", owner, { owner = it })
-            InputField("Phone", phone, { phone = it }, keyboard = KeyboardType.Phone)
+            if (store.auth.isCloud) PhoneRow(phone, phoneVerified) { verifySheet = true }
+            else InputField("Phone", phone, { phone = it }, keyboard = KeyboardType.Phone)
             InputField("Area", area, { area = it }, placeholder = "Sector 44, Gurugram")
             InputField("Operating since", since, { since = it }, placeholder = "since 2018")
             InputField("Season target (₹)", target, { target = it.filter(Char::isDigit) }, placeholder = "6000000", helper = "The bar on the season summary measures bookings against this.", keyboard = KeyboardType.Number)
         }
     }
+    if (verifySheet) PhoneVerifySheet(store, if (store.auth.account?.phone == null) AuthService.PhoneIntent.LINK else AuthService.PhoneIntent.UPDATE, phone, onVerified = { phone = it; phoneVerified = true }, onDismiss = { verifySheet = false })
 }
 
 @Composable
