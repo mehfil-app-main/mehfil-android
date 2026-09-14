@@ -1,6 +1,7 @@
 package com.mehfil.app.ui.screens
 
 import android.app.Activity
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,9 +45,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.mehfil.app.BuildConfig
+import com.mehfil.app.R
 import com.mehfil.app.model.Account
 import com.mehfil.app.model.AppStore
 import com.mehfil.app.model.AuthCancelled
@@ -107,13 +111,15 @@ fun WelcomeScreen(store: AppStore) {
                         Modifier.fillMaxWidth().height(Dim.button).clip(CircleShape).background(m.surface).border(1.dp, m.lineInput, CircleShape).clickable(enabled = !busy) { run { auth.signInWithGoogle(activity) } },
                         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                     ) { GoogleMark(); Spacer(Modifier.size(Space.sm)); Text("Continue with Google", style = Type.buttonMd, color = m.text) }
-                    Row(
+                    // Apple on Android goes through Firebase's web flow, which needs the Services ID from backend/README step 5.
+                    // Off until APPLE_SIGN_IN is flipped in app/build.gradle.kts, so the button never shows before it can work.
+                    if (BuildConfig.APPLE_SIGN_IN) Row(
                         Modifier.fillMaxWidth().height(Dim.button).clip(CircleShape).background(if (m.isDark) Color.White else Color.Black).clickable(enabled = !busy) { run { auth.signInWithApple(activity) } },
                         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                     ) { Text("", style = Type.headingSm, color = if (m.isDark) Color.Black else Color.White); Spacer(Modifier.size(Space.sm)); Text("Continue with Apple", style = Type.buttonMd, color = if (m.isDark) Color.Black else Color.White) }
                 } else {
                     MButton("Continue on this device", { auth.continueOnDevice() }, icon = Icons.Outlined.PhoneAndroid)
-                    Text("This build has no cloud configuration, so your data stays on this device. See backend/README.md to enable Google and Apple sign-in.",
+                    Text("This build has no cloud configuration, so your data stays on this device. See backend/README.md to enable Google sign-in.",
                         style = Type.caption, color = m.textMute, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 }
                 if (error != null) Text(error!!, style = Type.caption, color = m.danger, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
@@ -136,17 +142,10 @@ private fun Point(icon: androidx.compose.ui.graphics.vector.ImageVector, text: S
     }
 }
 
-/** The four-colour G, drawn so no asset is needed. */
+/** Google's four-colour G (official geometry) as a vector drawable. */
 @Composable
 fun GoogleMark() {
-    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
-        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
-        drawArc(Color(0xFFFBBC05), -90f + 18f, 90f, false, style = stroke)
-        drawArc(Color(0xFF34A853), 18f, 90f, false, style = stroke)
-        drawArc(Color(0xFF4285F4), 108f, 90f, false, style = stroke)
-        drawArc(Color(0xFFEA4335), 198f, 54f, false, style = stroke)
-        drawRect(Color(0xFF4285F4), topLeft = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2 - 2.dp.toPx()), size = androidx.compose.ui.geometry.Size(size.width / 2, 4.dp.toPx()))
-    }
+    Image(painterResource(R.drawable.ic_google_g), null, Modifier.size(18.dp))
 }
 
 /** Onboarding — the business card the rest of the app is signed with. */

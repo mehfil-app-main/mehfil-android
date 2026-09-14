@@ -22,6 +22,8 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("boolean", "HAS_FIREBASE_CONFIG", hasFirebaseConfig.toString())
+        // Sign in with Apple on Android needs the Apple Services ID + key in Firebase (backend/README step 5). Flip to true once that is done.
+        buildConfigField("boolean", "APPLE_SIGN_IN", "false")
     }
     signingConfigs {
         if (keystoreProps.isNotEmpty()) {
