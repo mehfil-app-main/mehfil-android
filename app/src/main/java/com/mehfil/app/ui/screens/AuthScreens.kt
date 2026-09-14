@@ -72,7 +72,7 @@ const val TERMS_URL = "https://sanu5.github.io/terms/"
 fun SplashScreen() {
     Box(Modifier.fillMaxSize().background(M.ground), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Space.md)) {
-            Box(Modifier.size(72.dp).clip(RoundedCornerShape(Radius.xl)).background(M.emphasisBg), contentAlignment = Alignment.Center) { Text("M", style = Type.displayHero, color = M.emphasisText) }
+            Image(painterResource(R.drawable.brand_mark), null, Modifier.size(72.dp).clip(RoundedCornerShape(Radius.xl)))
             CircularProgressIndicator(Modifier.size(20.dp), color = M.textMute, strokeWidth = 2.dp)
         }
     }
@@ -93,7 +93,7 @@ fun WelcomeScreen(store: AppStore) {
     Box(Modifier.fillMaxSize().background(m.ground)) {
         Column(Modifier.fillMaxSize().padding(horizontal = Space.xl).padding(bottom = Space.xl, top = 48.dp), verticalArrangement = Arrangement.spacedBy(Space.xl)) {
             Spacer(Modifier.weight(1f))
-            Box(Modifier.size(64.dp).clip(RoundedCornerShape(Radius.lg)).background(m.emphasisBg), contentAlignment = Alignment.Center) { Text("M", style = Type.displayHero, color = m.emphasisText) }
+            Image(painterResource(R.drawable.brand_mark), null, Modifier.size(64.dp).clip(RoundedCornerShape(Radius.lg)))
             Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 Text("Mehfil", style = Type.displayHero, color = m.text)
                 Text("Run the wedding season without the spreadsheet.", style = Type.headingMd, color = m.text)
