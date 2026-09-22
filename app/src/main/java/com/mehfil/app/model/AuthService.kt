@@ -12,28 +12,36 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.firebase.FirebaseException
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
-import com.google.firebase.FirebaseTooManyRequestsException
+import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.OAuthProvider
-import com.google.firebase.auth.PhoneAuthCredential
-import com.google.firebase.auth.PhoneAuthOptions
-import com.google.firebase.auth.PhoneAuthProvider
+import com.google.firebase.auth.userProfileChangeRequest
 import com.mehfil.app.BuildConfig
-import java.util.concurrent.TimeUnit
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 
-/** [phone] is E.164 and present once a number has been verified with an OTP. */
-data class Account(val uid: String, val name: String?, val email: String?, val provider: String, val phone: String? = null) {
-    val providerLabel get() = when (provider) { "apple.com" -> "Apple"; "google.com" -> "Google"; "phone" -> "Phone"; else -> "This device" }
+/**
+ * @param emailVerified false only for an email/password account whose verification link has not been opened yet.
+ */
+data class Account(
+    val uid: String,
+    val name: String?,
+    val email: String?,
+    val provider: String,          // "apple.com" | "google.com" | "password" | "device"
+    val emailVerified: Boolean = true,
+) {
+    val providerLabel get() = when (provider) {
+        "apple.com" -> "Apple"
+        "google.com" -> "Google"
+        "password" -> "Email"
+        else -> "This device"
+    }
 }
 
 class AuthCancelled : Exception("Sign-in was cancelled.")
@@ -54,15 +62,104 @@ class AuthService(private val context: Context) {
     }
 
     val account: Account? get() = (state as? State.SignedIn)?.account
-    private fun account(u: FirebaseUser) = Account(u.uid, u.displayName, u.email, u.providerData.firstOrNull { it.providerId != "firebase" }?.providerId ?: "firebase", u.phoneNumber)
 
-    init {
-        // The emulator has no Play Integrity: let the fictional test numbers from the Firebase console work without app verification.
-        val emulator = android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish") || android.os.Build.PRODUCT.startsWith("sdk")
-        if (auth != null && BuildConfig.DEBUG && emulator) auth.firebaseAuthSettings.setAppVerificationDisabledForTesting(true)
+    /** True when the signed-in account still has to open its verification link before using the app. */
+    val needsEmailVerification: Boolean
+        get() = Features[Feature.EMAIL_VERIFICATION_REQUIRED] && account?.let { it.provider == "password" && !it.emailVerified } == true
+
+    private fun account(u: FirebaseUser): Account {
+        val provider = u.providerData.firstOrNull { it.providerId != "firebase" }?.providerId ?: "firebase"
+        // Only a password account can be unverified; federated providers vouch for the address.
+        return Account(u.uid, u.displayName, u.email, provider, if (provider == "password") u.isEmailVerified else true)
     }
 
     fun continueOnDevice() { prefs.edit().putBoolean("local", true).apply(); state = State.SignedIn(localAccount) }
+
+    // ---- Email and password ----
+
+    companion object {
+        /** Minimum we accept: 8 characters with at least one letter and one digit. */
+        fun passwordProblem(password: String): String? = when {
+            password.length < 8 -> "Use at least 8 characters."
+            password.none { it.isLetter() } -> "Include at least one letter."
+            password.none { it.isDigit() } -> "Include at least one number."
+            else -> null
+        }
+
+        fun isValidEmail(email: String): Boolean {
+            val t = email.trim()
+            val at = t.indexOf('@')
+            if (at <= 0 || at != t.lastIndexOf('@') || t.contains(' ')) return false
+            val domain = t.substring(at + 1)
+            return domain.contains('.') && !domain.startsWith('.') && !domain.endsWith('.')
+        }
+    }
+
+    /** Creates the account, stores the owner's name on it and sends the verification email. */
+    suspend fun signUp(email: String, password: String, name: String) {
+        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
+        val user = auth.createUserWithEmailAndPassword(email.trim(), password).await().user!!
+        if (name.isNotBlank()) runCatching { user.updateProfile(userProfileChangeRequest { displayName = name.trim() }).await() }
+        runCatching { user.sendEmailVerification().await() }
+        state = State.SignedIn(account(user))
+    }
+
+    suspend fun signIn(email: String, password: String) {
+        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
+        val user = auth.signInWithEmailAndPassword(email.trim(), password).await().user!!
+        state = State.SignedIn(account(user))
+    }
+
+    /** Sends (or resends) the verification email for the signed-in account. */
+    suspend fun sendVerificationEmail() {
+        val user = auth?.currentUser ?: error("You're not signed in.")
+        user.sendEmailVerification().await()
+    }
+
+    /** Pulls the user record again so `emailVerified` reflects a link opened elsewhere. */
+    suspend fun refreshVerification(): Boolean {
+        val user = auth?.currentUser ?: return false
+        runCatching { user.reload().await() }
+        val fresh = auth.currentUser ?: return false
+        state = State.SignedIn(account(fresh))
+        return fresh.isEmailVerified
+    }
+
+    suspend fun sendPasswordReset(email: String) {
+        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
+        auth.sendPasswordResetEmail(email.trim()).await()
+    }
+
+    /** Changes the password after confirming the current one. */
+    suspend fun changePassword(current: String, new: String) {
+        val user = auth?.currentUser ?: error("You're not signed in.")
+        val email = user.email ?: error("This account has no email address.")
+        user.reauthenticate(EmailAuthProvider.getCredential(email, current)).await()
+        user.updatePassword(new).await()
+    }
+
+    /** Firebase's auth errors in plain words. */
+    fun message(e: Throwable): String {
+        val code = (e as? FirebaseAuthException)?.errorCode
+        return when {
+            code == "ERROR_INVALID_EMAIL" -> "That doesn't look like an email address."
+            code == "ERROR_EMAIL_ALREADY_IN_USE" -> "An account already exists for this email. Sign in instead."
+            code == "ERROR_WEAK_PASSWORD" || e is FirebaseAuthWeakPasswordException -> "That password is too easy to guess. Use at least 8 characters with a letter and a number."
+            code == "ERROR_WRONG_PASSWORD" || code == "ERROR_INVALID_CREDENTIAL" -> "Wrong email or password."
+            code == "ERROR_USER_NOT_FOUND" -> "No account for that email. Create one first."
+            code == "ERROR_USER_DISABLED" -> "This account has been disabled."
+            code == "ERROR_TOO_MANY_REQUESTS" -> "Too many attempts. Wait a few minutes and try again."
+            code == "ERROR_REQUIRES_RECENT_LOGIN" -> "Please sign in again before making this change."
+            code == "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" -> "This email is already used by another sign-in method. Use that one instead."
+            e is FirebaseAuthInvalidUserException -> "No account for that email. Create one first."
+            e is FirebaseAuthInvalidCredentialsException -> "Wrong email or password."
+            e is FirebaseAuthUserCollisionException -> "An account already exists for this email. Sign in instead."
+            (e.message ?: "").contains("network", true) -> "No connection. Check your internet and try again."
+            else -> e.message ?: "Something went wrong."
+        }
+    }
+
+    // ---- Google ----
 
     /** Google via Credential Manager: the Web client id comes from google-services.json (default_web_client_id). */
     suspend fun signInWithGoogle(activity: Activity) {
@@ -80,61 +177,6 @@ class AuthService(private val context: Context) {
         auth.startActivityForSignInWithProvider(activity, provider).await()
     }
 
-    // ---- Phone number + OTP ----
-
-    /** What a verified code should do: start a session, attach the number to the signed-in account, replace it, or prove identity. */
-    enum class PhoneIntent { SIGN_IN, LINK, UPDATE, REAUTH }
-    private var verificationId: String? = null
-    private var resendToken: PhoneAuthProvider.ForceResendingToken? = null
-    private var autoCredential: PhoneAuthCredential? = null
-
-    /** Texts a 6-digit code. Returns true when Play services verified the number instantly (no code needed). */
-    suspend fun sendCode(activity: Activity, phone: String): Boolean {
-        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
-        autoCredential = null
-        return suspendCancellableCoroutine { cont ->
-            val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-                override fun onVerificationCompleted(credential: PhoneAuthCredential) { autoCredential = credential; if (cont.isActive) cont.resume(true) }
-                override fun onVerificationFailed(e: FirebaseException) { if (cont.isActive) cont.resumeWithException(e) }
-                override fun onCodeSent(id: String, token: PhoneAuthProvider.ForceResendingToken) { verificationId = id; resendToken = token; if (cont.isActive) cont.resume(false) }
-            }
-            val b = PhoneAuthOptions.newBuilder(auth).setPhoneNumber(phone).setTimeout(60L, TimeUnit.SECONDS).setActivity(activity).setCallbacks(callbacks)
-            resendToken?.let { b.setForceResendingToken(it) }
-            PhoneAuthProvider.verifyPhoneNumber(b.build())
-        }
-    }
-
-    /** Confirms the code (or the instant credential) and applies the intent. Returns the verified E.164 number. */
-    suspend fun confirmCode(code: String?, intent: PhoneIntent): String {
-        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
-        val credential = autoCredential ?: PhoneAuthProvider.getCredential(verificationId ?: error("Send a code first."), code?.filter { it.isDigit() } ?: error("Enter the code."))
-        val user: FirebaseUser = when (intent) {
-            PhoneIntent.SIGN_IN -> auth.signInWithCredential(credential).await().user!!
-            PhoneIntent.LINK -> {
-                val u = auth.currentUser ?: error("You're not signed in.")
-                try { u.linkWithCredential(credential).await().user!! }
-                catch (e: FirebaseAuthUserCollisionException) { if (e.errorCode == "ERROR_PROVIDER_ALREADY_LINKED") { u.updatePhoneNumber(credential).await(); u } else throw e }
-            }
-            PhoneIntent.UPDATE -> { val u = auth.currentUser ?: error("You're not signed in."); u.updatePhoneNumber(credential).await(); u }
-            PhoneIntent.REAUTH -> { val u = auth.currentUser ?: error("You're not signed in."); u.reauthenticate(credential).await(); u }
-        }
-        verificationId = null; resendToken = null; autoCredential = null
-        state = State.SignedIn(account(user))
-        return user.phoneNumber ?: ""
-    }
-
-    /** Firebase's phone-auth errors in plain words. */
-    fun phoneMessage(e: Throwable): String = when {
-        e is FirebaseAuthInvalidCredentialsException && e.errorCode == "ERROR_INVALID_VERIFICATION_CODE" -> "That code isn't right. Check the SMS and try again."
-        e is FirebaseAuthInvalidCredentialsException && e.errorCode == "ERROR_SESSION_EXPIRED" -> "The code has expired — send a new one."
-        e is FirebaseAuthInvalidCredentialsException -> "Enter a valid mobile number with its country code."
-        e is FirebaseAuthUserCollisionException -> "This number is already linked to another Mehfil account."
-        e is FirebaseTooManyRequestsException -> "Too many attempts from this device. Try again in a while."
-        e is FirebaseAuthException && e.errorCode == "ERROR_REQUIRES_RECENT_LOGIN" -> "Please sign in again before changing your number."
-        e is FirebaseException && (e.message ?: "").contains("verify", true) -> "We couldn't confirm this app. Try again on a real device."
-        else -> e.message ?: "Something went wrong."
-    }
-
     suspend fun signOut() {
         if (auth != null) {
             auth.signOut()
@@ -142,14 +184,20 @@ class AuthService(private val context: Context) {
         } else { prefs.edit().putBoolean("local", false).apply(); state = State.SignedOut }
     }
 
-    /** Re-authenticates (Firebase requires a recent sign-in) and deletes the user. The caller erased the data first. */
-    suspend fun deleteAccount(activity: Activity) {
+    /**
+     * Re-authenticates (Firebase requires a recent sign-in) and deletes the user. The caller erased the data first.
+     * [password] is required only for email/password accounts — the UI asks for it before calling.
+     */
+    suspend fun deleteAccount(activity: Activity, password: String? = null) {
         val auth = auth ?: run { prefs.edit().putBoolean("local", false).apply(); state = State.SignedOut; return }
         val user = auth.currentUser ?: return
         when (user.providerData.firstOrNull { it.providerId != "firebase" }?.providerId) {
             "google.com" -> { val c = googleCredential(activity); user.reauthenticate(GoogleAuthProvider.getCredential(c.idToken, null)).await() }
             "apple.com" -> { val provider = OAuthProvider.newBuilder("apple.com").build(); user.startActivityForReauthenticateWithProvider(activity, provider).await() }
-            // "phone" accounts re-authenticate with an OTP (confirmCode(…, REAUTH)) before the caller gets here.
+            "password" -> {
+                val email = user.email ?: error("This account has no email address.")
+                user.reauthenticate(EmailAuthProvider.getCredential(email, password ?: error("Enter your password to confirm."))).await()
+            }
         }
         user.delete().await()
         runCatching { CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest()) }

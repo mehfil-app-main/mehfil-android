@@ -269,7 +269,7 @@ fun SharedEventPageScreen(store: AppStore, nav: Nav, eventId: String) {
     val holds = store.inventory.mapNotNull { item -> item.holds.firstOrNull { it.eventId == e.id }?.let { item.name to it.qty } }
     val packages = store.packages
     val ctx = LocalContext.current
-    val ink = Palette.ink; val mute = Palette.inkMute
+    val ink = Palette.ink; val mute = Palette.muted
     fun dueLine() = due.joinToString(" · ") { "${Fmt.inr(it.amount)} ${if (it.due <= Cal.todayDate) "due now" else if (it.kind == MilestoneKind.BALANCE) "on the day" else "by ${Fmt.dayMonth(it.due)}"}" }.ifEmpty { "Fully paid — thank you" }
     fun shareBody(): String {
         var s = "${v.businessName} · for the ${e.surname} family\n\n${e.name}\n${Fmt.weekdayLong(e.day)} · from ${Fmt.time(e.start)}\n${listOfNotNull(e.venue.short, e.venue.hall).joinToString(" · ")}\n"
@@ -279,13 +279,9 @@ fun SharedEventPageScreen(store: AppStore, nav: Nav, eventId: String) {
         s += "\n\n${v.ownerName} · ${v.phone}"
         return s
     }
-    Box(Modifier.fillMaxSize().background(Palette.canvasCream)) {
-        // Mesh: documented hues at alpha over canvas-cream (tokens.css --color-mesh-*)
-        Box(Modifier.fillMaxWidth().height(420.dp).background(Brush.radialGradient(listOf(Palette.primarySubdued.copy(alpha = 0.85f), Color.Transparent), center = androidx.compose.ui.geometry.Offset(900f, 120f), radius = 900f)))
-        Box(Modifier.fillMaxWidth().height(420.dp).background(Brush.radialGradient(listOf(Palette.magenta.copy(alpha = 0.42f), Color.Transparent), center = androidx.compose.ui.geometry.Offset(250f, 220f), radius = 750f)))
-        Box(Modifier.fillMaxWidth().height(420.dp).background(Brush.radialGradient(listOf(Palette.ruby.copy(alpha = 0.14f), Color.Transparent), center = androidx.compose.ui.geometry.Offset(80f, 40f), radius = 600f)))
-        Box(Modifier.fillMaxWidth().height(420.dp).background(Brush.radialGradient(listOf(Palette.lemon.copy(alpha = 0.16f), Color.Transparent), center = androidx.compose.ui.geometry.Offset(1000f, 400f), radius = 650f)))
-        Box(Modifier.fillMaxWidth().height(520.dp).background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Palette.canvasCream)))
+    Box(Modifier.fillMaxSize().background(Palette.canvas)) {
+        // The gradient mesh was the previous skin's signature and has no Airbnb equivalent: an Airbnb listing
+        // page is a white canvas where the photographs do the work.
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Spacer(Modifier.height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding()))
             Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = Dim.gutter), verticalAlignment = Alignment.CenterVertically) {
@@ -296,9 +292,9 @@ fun SharedEventPageScreen(store: AppStore, nav: Nav, eventId: String) {
             Column(Modifier.padding(horizontal = Space.xl).padding(top = Space.lg, bottom = Space.xxl), verticalArrangement = Arrangement.spacedBy(Space.xl)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                     Text("${v.businessName.uppercase()} · FOR THE ${e.surname.uppercase()} FAMILY", style = Type.microCap.copy(letterSpacing = androidx.compose.ui.unit.TextUnit(0.6f, androidx.compose.ui.unit.TextUnitType.Sp)), color = mute)
-                    Text(e.name, style = Type.displayHero, color = ink)
+                    Text(e.name, style = Type.displayLg, color = ink)
                     Text("${Fmt.weekdayLong(e.day)} · from ${Fmt.time(e.start)}", style = Type.bodyLg, color = ink)
-                    Text(listOfNotNull(e.venue.short, e.venue.hall).joinToString(" · "), style = Type.bodyLg, color = Palette.inkSecondary)
+                    Text(listOfNotNull(e.venue.short, e.venue.hall).joinToString(" · "), style = Type.bodyLg, color = Palette.body)
                 }
                 SharedSection("What we are bringing") {
                     if (holds.isEmpty() && packages.isEmpty()) SharedLine("Full décor as quoted", "")
@@ -310,7 +306,7 @@ fun SharedEventPageScreen(store: AppStore, nav: Nav, eventId: String) {
                     SharedLine("Setup begins", Fmt.time(e.start.minusHours(8))); SharedLine("Venue ready for your walkthrough", Fmt.time(e.start.minusMinutes(30)))
                     SharedLine("Guests arrive", Fmt.time(e.start)); SharedLine("Pack-down", Fmt.time(e.end))
                 }
-                Column(Modifier.fillMaxWidth().clip(CardShape).background(Palette.canvasCream).border(1.dp, Palette.lemon.copy(alpha = 0.25f), CardShape).padding(Space.lg), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                Column(Modifier.fillMaxWidth().clip(CardShape).background(Palette.surfaceSoft).padding(Space.lg), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                     Row { Text("Received", style = Type.bodyLg, color = ink, modifier = Modifier.weight(1f)); Text("${Fmt.inr(collected)} of ${Fmt.inr(e.quoted)}", style = Type.bodyLg, color = ink) }
                     ProgressBar(collected.toFloat() / maxOf(1, e.quoted), Modifier.height(4.dp), tint = ink)
                     Text(dueLine() + if (v.upi.isBlank()) "" else " · UPI ${v.upi}", style = Type.caption, color = mute)
@@ -319,7 +315,7 @@ fun SharedEventPageScreen(store: AppStore, nav: Nav, eventId: String) {
                     listOf(R.drawable.mood_1, R.drawable.mood_2, R.drawable.mood_3).forEach { Image(painterResource(it), null, Modifier.weight(1f).aspectRatio(4f / 3f).clip(RoundedCornerShape(Radius.sm)), contentScale = ContentScale.Crop) }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                    Box(Modifier.size(36.dp).clip(RoundedCornerShape(Radius.sm)).background(Palette.brandDark), contentAlignment = Alignment.Center) { Text(v.monogram, style = Type.headingSm, color = Palette.onPrimary) }
+                    Box(Modifier.size(36.dp).clip(RoundedCornerShape(Radius.sm)).background(Palette.ink), contentAlignment = Alignment.Center) { Text(v.monogram, style = Type.headingSm, color = Palette.onDark) }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("${v.ownerName} · ${v.businessName}", style = Type.bodyMdStrong, color = ink, maxLines = 1)
                         Text(listOfNotNull(v.phone.nilIfEmpty(), v.area.nilIfEmpty()).joinToString(" · "), style = Type.caption, color = mute, maxLines = 1)
@@ -340,5 +336,5 @@ private fun SharedSection(title: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun SharedLine(l: String, r: String) {
-    Row(Modifier.fillMaxWidth()) { Text(l, style = Type.bodyLg, color = Palette.ink, modifier = Modifier.weight(1f)); Text(r, style = Type.bodyLg, color = Palette.inkMute) }
+    Row(Modifier.fillMaxWidth()) { Text(l, style = Type.bodyLg, color = Palette.ink, modifier = Modifier.weight(1f)); Text(r, style = Type.bodyLg, color = Palette.muted) }
 }

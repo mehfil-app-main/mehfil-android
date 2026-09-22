@@ -66,7 +66,6 @@ object Mapping {
         "ownerName" to v.ownerName, "businessName" to v.businessName, "phone" to v.phone, "area" to v.area, "since" to v.since, "upi" to v.upi, "bankLabel" to v.bankLabel,
         "seasonTarget" to v.seasonTarget, "lastSeasonBooked" to v.lastSeasonBooked, "lastSeasonEvents" to v.lastSeasonEvents,
         "notifyPayments" to v.notifyPayments, "notifyConflicts" to v.notifyConflicts, "notifyChanges" to v.notifyChanges, "createdAt" to v.createdAt.toDate(),
-        "phoneVerified" to v.phoneVerified,
     )
 
     // ---- from document ----
@@ -102,7 +101,6 @@ object Mapping {
     fun profile(d: Doc) = VendorProfile(
         d["ownerName"].str(), d["businessName"].str(), d["phone"].str(), d["area"].str(), d["since"].str(), d["upi"].str(), d["bankLabel"].str(), d["seasonTarget"].int(6_000_000),
         (d["lastSeasonBooked"] as? Number)?.toInt(), (d["lastSeasonEvents"] as? Number)?.toInt(), d["notifyPayments"].bool(true), d["notifyConflicts"].bool(true), d["notifyChanges"].bool(true), d["createdAt"].asDateTime() ?: Cal.today,
-        d["phoneVerified"].bool(false),
     )
 
     /** Rebuilds the full picture from raw documents per collection. */

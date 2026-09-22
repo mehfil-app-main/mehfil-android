@@ -111,8 +111,6 @@ data class VendorProfile(
     val lastSeasonBooked: Int? = null, val lastSeasonEvents: Int? = null,
     val notifyPayments: Boolean = true, val notifyConflicts: Boolean = true, val notifyChanges: Boolean = true,
     val createdAt: LocalDateTime = Cal.today,
-    /** True once the number was confirmed with an OTP and linked to the account. */
-    val phoneVerified: Boolean = false,
 ) {
     val ownerFirstName get() = ownerName.substringBefore(' ')
     val monogram get() = businessName.take(1).uppercase()

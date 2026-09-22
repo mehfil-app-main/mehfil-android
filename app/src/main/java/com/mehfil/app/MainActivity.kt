@@ -11,19 +11,23 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mehfil.app.model.AppStore
 import com.mehfil.app.model.Appearance
 import com.mehfil.app.model.AuthService
+import com.mehfil.app.model.Feature
+import com.mehfil.app.model.Features
 import com.mehfil.app.ui.MehfilApp
 import com.mehfil.app.ui.screens.OnboardingScreen
 import com.mehfil.app.ui.screens.SplashScreen
+import com.mehfil.app.ui.screens.VerifyEmailScreen
 import com.mehfil.app.ui.screens.WelcomeScreen
 import com.mehfil.app.ui.theme.MehfilTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Features.init(applicationContext)
         enableEdgeToEdge()
         setContent {
             val store: AppStore = viewModel()
-            val dark = when (store.appearance) {
+            val dark = if (!Features[Feature.DARK_MODE]) false else when (store.appearance) {
                 Appearance.SYSTEM -> isSystemInDarkTheme()
                 Appearance.LIGHT -> false
                 Appearance.DARK -> true
@@ -33,7 +37,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** Routes the session: loading → welcome (signed out) → onboarding (no profile yet) → the app. */
+/** Routes the session: loading → welcome (signed out) → verify email → onboarding (no profile yet) → the app. */
 @Composable
 private fun Session(store: AppStore) {
     val state = store.auth.state
@@ -46,6 +50,7 @@ private fun Session(store: AppStore) {
             LaunchedEffect(account.uid) { store.bind(account.uid) }
             when {
                 !store.profileChecked || store.uid != account.uid -> SplashScreen()
+                store.auth.needsEmailVerification -> VerifyEmailScreen(store, account)
                 store.needsOnboarding -> OnboardingScreen(store, account)
                 else -> MehfilApp(store)
             }

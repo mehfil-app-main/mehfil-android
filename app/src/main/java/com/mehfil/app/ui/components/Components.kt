@@ -60,16 +60,20 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mehfil.app.R
 import com.mehfil.app.model.AttendanceState
 import com.mehfil.app.model.CrewMember
 import com.mehfil.app.model.MilestoneStatus
 import com.mehfil.app.model.PaymentState
 import com.mehfil.app.model.Toast
+import com.mehfil.app.ui.theme.ButtonShape
 import com.mehfil.app.ui.theme.CardShape
 import com.mehfil.app.ui.theme.Dim
 import com.mehfil.app.ui.theme.FieldShape
@@ -120,9 +124,9 @@ fun MButton(
         modifier
             .then(if (fullWidth) Modifier.fillMaxWidth() else Modifier)
             .heightIn(min = if (compact) Dim.buttonCompact else Dim.button)
-            .clip(CircleShape)
+            .clip(ButtonShape)
             .background(bg)
-            .border(1.dp, border, CircleShape)
+            .border(1.dp, border, ButtonShape)
             .clickable(enabled = enabled && !loading, interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = if (compact) Space.lg else Space.xl),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
@@ -203,10 +207,35 @@ private val avatarRes = listOf(R.drawable.avatar_1, R.drawable.avatar_2, R.drawa
 
 @Composable
 fun Avatar(index: Int?, name: String, size: Dp = Dim.avatar, modifier: Modifier = Modifier) {
-    val m = M
-    Box(modifier.size(size).clip(CircleShape).background(m.line), contentAlignment = Alignment.Center) {
-        if (index != null) Image(painterResource(avatarRes[(index - 1).coerceIn(0, 7)]), null, Modifier.size(size), contentScale = ContentScale.Crop)
-        else Text(name.take(1), style = Type.bodyMdStrong, color = m.textMute)
+    Box(modifier.size(size).clip(CircleShape).background(Initials.color(name)), contentAlignment = Alignment.Center) {
+        Text(Initials.of(name), style = Type.bodyMdStrong.copy(fontSize = (size.value * 0.38f).sp), color = Color.White)
+    }
+}
+
+/**
+ * Initials and a stable colour for a person, so the same name always looks the same on every device and on both
+ * platforms. Deliberately not random: a client's tile must not change between launches.
+ */
+object Initials {
+    /** "Vikram Kapoor" → "VK" · "Ajay" → "A" · "" → "?" */
+    fun of(name: String): String {
+        val words = name.split(" ").filter { it.firstOrNull()?.isLetter() == true }
+        val first = words.firstOrNull()?.first() ?: return "?"
+        return if (words.size > 1) "$first${words.last().first()}".uppercase() else first.uppercase().toString()
+    }
+
+    /** Eight hues that all carry white text at 4.5:1 or better, on brand with the Airbnb skin. */
+    private val hues = listOf(
+        Color(0xFFBF3A5C), Color(0xFF92174D), Color(0xFF460479), Color(0xFF225A9E),
+        Color(0xFF1C665C), Color(0xFF734D21), Color(0xFF4D596B), Color(0xFF222222),
+    )
+
+    fun color(name: String): Color {
+        if (name.isEmpty()) return hues.last()
+        // FNV-1a over the bytes: stable across launches, platforms and Kotlin versions.
+        var hash = 2166136261u
+        for (b in name.lowercase().toByteArray()) { hash = (hash xor (b.toUInt() and 0xffu)) * 16777619u }
+        return hues[(hash % hues.size.toUInt()).toInt()]
     }
 }
 
@@ -250,7 +279,7 @@ fun ProgressBar(fraction: Float, modifier: Modifier = Modifier, tint: Color = M.
 fun InputField(
     label: String, value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier,
     placeholder: String = "", helper: String? = null, error: String? = null, keyboard: KeyboardType = KeyboardType.Text,
-    trailing: ImageVector? = null, singleLine: Boolean = true, minHeight: Dp = Dim.input,
+    trailing: ImageVector? = null, singleLine: Boolean = true, minHeight: Dp = Dim.input, password: Boolean = false,
 ) {
     val m = M
     val interaction = remember { MutableInteractionSource() }
@@ -259,14 +288,15 @@ fun InputField(
         Text(label, style = Type.caption, color = m.textMute)
         Row(
             Modifier.fillMaxWidth().heightIn(min = minHeight).clip(FieldShape).background(m.surface)
-                .border(1.dp, if (error != null) m.danger else if (focused) m.accent else m.lineInput, FieldShape)
+                .border(1.dp, if (error != null) m.danger else if (focused) m.text else m.lineInput, FieldShape)
                 .padding(horizontal = Space.md, vertical = if (singleLine) 0.dp else Space.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BasicTextField(
                 value = value, onValueChange = onValueChange, modifier = Modifier.weight(1f), singleLine = singleLine,
-                textStyle = Type.bodyMd.copy(color = m.text), cursorBrush = SolidColor(m.accent), interactionSource = interaction,
-                keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+                textStyle = Type.bodyMd.copy(color = m.text), cursorBrush = SolidColor(m.text), interactionSource = interaction,
+                keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard),
+                visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
                 decorationBox = { inner -> Box { if (value.isEmpty()) Text(placeholder, style = Type.bodyMd, color = m.textMute); inner() } },
             )
             if (trailing != null) Icon(trailing, null, Modifier.size(18.dp), tint = m.textMute)
@@ -302,7 +332,7 @@ fun AmountInput(amount: Int, modifier: Modifier = Modifier, focused: Boolean = t
         if (label != null) Text(label, style = Type.caption, color = m.textMute)
         Row(
             Modifier.fillMaxWidth().height(Dim.amountInput).clip(FieldShape).background(m.surface)
-                .border(1.dp, if (error != null) m.danger else if (focused) m.accent else m.lineInput, FieldShape)
+                .border(1.dp, if (error != null) m.danger else if (focused) m.text else m.lineInput, FieldShape)
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
                 .padding(horizontal = Space.lg),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End,

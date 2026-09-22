@@ -63,7 +63,7 @@ fun HomeScreen(store: AppStore, nav: Nav) {
     val attention: Event? = saturdayEvents.firstOrNull { store.isConflicted(it) } ?: store.upcomingEvents.firstOrNull { store.isConflicted(it) } ?: store.upcomingEvents.firstOrNull { it.day >= Cal.todayDate }
     val greeting = when { Cal.today.hour < 12 -> "Good morning"; Cal.today.hour < 17 -> "Good afternoon"; else -> "Good evening" }
     Screen(
-        title = "$greeting, ${v?.ownerFirstName ?: "there"}", subtitle = "${Fmt.weekdayLong(Cal.todayDate)} · ${if (saturdayEvents.isEmpty()) "nothing" else "${saturdayEvents.size} events"} this Saturday", isRoot = true,
+        title = "$greeting, ${v?.ownerFirstName ?: "there"}", subtitle = "${Fmt.weekdayLong(Cal.todayDate)} · ${if (saturdayEvents.isEmpty()) "nothing" else "${saturdayEvents.size} event${if (saturdayEvents.size == 1) "" else "s"}"} this Saturday", isRoot = true,
         headerTrailing = { CircleAction(Icons.Outlined.BarChart, { nav.push(Routes.season) }, contentDescription = "Season summary") },
     ) {
         val conflict = store.seasonConflict
@@ -113,7 +113,7 @@ fun CalendarMonthScreen(store: AppStore, nav: Nav) {
     val dayEvents = store.eventsOn(selected)
     fun shift(n: Int) { month = month.plusMonths(n.toLong()); selected = month.atDay(1) }
     Screen(
-        title = Fmt.monthYear(month.atDay(1)), subtitle = if (monthEvents.isEmpty()) "No events this month" else "${monthEvents.size} events · ${Fmt.inr(monthEvents.sumOf { it.quoted })} booked", onBack = nav::back, spacing = Space.lg,
+        title = Fmt.monthYear(month.atDay(1)), subtitle = if (monthEvents.isEmpty()) "No events this month" else "${monthEvents.size} event${if (monthEvents.size == 1) "" else "s"} · ${Fmt.inr(monthEvents.sumOf { it.quoted })} booked", onBack = nav::back, spacing = Space.lg,
         actions = { CircleAction(Icons.Outlined.ChevronLeft, { shift(-1) }); CircleAction(Icons.Outlined.ChevronRight, { shift(1) }) },
     ) {
         Box(Modifier.pointerInput(Unit) { detectHorizontalDragGestures { _, dx -> if (dx < -30) shift(1) else if (dx > 30) shift(-1) } }) {
