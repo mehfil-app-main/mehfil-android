@@ -27,7 +27,6 @@ import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PhoneAndroid
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,7 +53,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.mehfil.app.BuildConfig
 import com.mehfil.app.R
 import com.mehfil.app.model.Account
 import com.mehfil.app.model.AppStore
@@ -336,7 +334,6 @@ fun AccountScreen(store: AppStore, nav: Nav) {
     var confirmRemoveSample by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var passwordSheet by remember { mutableStateOf(false) }
-    var flagsSheet by remember { mutableStateOf(false) }
     var deletePassword by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -364,9 +361,6 @@ fun AccountScreen(store: AppStore, nav: Nav) {
                 }
                 ListRow("Erase all data", subtitle = "Events, clients, crew, inventory and payments", onClick = { confirmErase = true }, leading = { IconTile(Icons.Outlined.DeleteOutline, tint = m.danger) }) { Chevron() }
             }
-            if (BuildConfig.DEBUG) RowGroup {
-                ListRow("Feature flags", subtitle = "Debug builds only — turn parts of the app on and off", onClick = { flagsSheet = true }, leading = { IconTile(Icons.Outlined.Tune) }) { Chevron() }
-            }
             Column(Modifier.padding(top = Space.md), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 MButton("Sign out", { scope.launch { auth.signOut() } }, kind = ButtonKind.SECONDARY)
                 MButton("Delete account", { deletePassword = ""; confirmDelete = true }, kind = ButtonKind.DESTRUCTIVE)
@@ -381,7 +375,6 @@ fun AccountScreen(store: AppStore, nav: Nav) {
         if (busy) Box(Modifier.fillMaxSize().background(m.scrim), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) }
     }
     if (passwordSheet) ChangePasswordSheet(store) { passwordSheet = false }
-    if (flagsSheet) FeatureFlagsSheet { flagsSheet = false }
     if (confirmRemoveSample) ModalBottomSheet(onDismissRequest = { confirmRemoveSample = false }, containerColor = m.surface) {
         SheetContent("Remove the sample season?", "The twelve demo events and their clients, crew, inventory, payments and tasks go. Anything you created yourself stays exactly as it is.", actions = {
             MButton("Remove the sample data", { confirmRemoveSample = false; perform { store.removeSampleSeason() } }, kind = ButtonKind.DESTRUCTIVE)
@@ -430,33 +423,6 @@ fun ChangePasswordSheet(store: AppStore, onDismiss: () -> Unit) {
             InputField("Confirm new password", confirm, { confirm = it }, placeholder = "Type it again",
                 helper = if (confirm.isNotEmpty() && confirm != new) "The two passwords don't match." else null, password = true)
             if (error != null) Text(error!!, style = Type.caption, color = m.danger)
-        }
-    }
-}
-
-/** Debug-only switchboard over [Feature]. Release builds never reach this. */
-@Composable
-fun FeatureFlagsSheet(onDismiss: () -> Unit) {
-    val m = M
-    EditSheet(onDismiss) {
-        SheetContent("Feature flags", "Debug builds only. Overrides persist until you reset them.", actions = {
-            MButton("Reset to shipping defaults", { Features.resetOverrides() }, kind = ButtonKind.SECONDARY)
-            MButton("Done", onDismiss)
-        }) {
-            RowGroup {
-                Feature.entries.forEachIndexed { i, f ->
-                    if (i > 0) Hairline()
-                    Row(Modifier.fillMaxWidth().padding(horizontal = Space.lg, vertical = Space.sm), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(f.title, style = Type.bodyMd, color = m.text)
-                            Text(if (Features.isOverridden(f)) "Overridden · ships ${if (f.default) "on" else "off"}" else "Default",
-                                style = Type.caption, color = if (Features.isOverridden(f)) m.accent else m.textMute)
-                        }
-                        Switch(Features[f], { Features.override(f, it) }, colors = SwitchDefaults.colors(checkedTrackColor = m.accent))
-                    }
-                }
-            }
-            Text("Some changes need the screen to be reopened, and sign-in flags need a sign-out.", style = Type.caption, color = m.textMute)
         }
     }
 }

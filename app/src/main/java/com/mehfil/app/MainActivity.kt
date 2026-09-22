@@ -23,7 +23,6 @@ import com.mehfil.app.ui.theme.MehfilTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Features.init(applicationContext)
         enableEdgeToEdge()
         setContent {
             val store: AppStore = viewModel()
