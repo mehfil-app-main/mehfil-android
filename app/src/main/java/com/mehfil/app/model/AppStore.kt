@@ -63,6 +63,18 @@ class AppStore(app: Application) : AndroidViewModel(app) {
         val id = uid ?: return; val p = change(vendor ?: return); vendor = p
         viewModelScope.launch { try { repo.saveProfile(id, p) } catch (e: Exception) { show(Toast.Kind.ERROR, "Couldn't save: ${e.message}") } }
     }
+    /**
+     * Deletes exactly the records the sample season wrote. Its ids are fixed ("kapoor", "kapoor-sangeet", …),
+     * so anything the vendor created themselves is untouched — unlike [eraseAllData], which clears everything.
+     */
+    suspend fun removeSampleSeason() {
+        val id = uid ?: return
+        try {
+            repo.write(id, Mapping.writes(SampleSeason.data()).map { WriteOp.Delete(it.collection, it.id) })
+            show(Toast.Kind.SUCCESS, "Sample season removed")
+        } catch (e: Exception) { show(Toast.Kind.ERROR, "Couldn't remove it: ${e.message}") }
+    }
+
     suspend fun loadSampleSeason() { val id = uid ?: return; try { repo.write(id, Mapping.writes(SampleSeason.data())); show(Toast.Kind.SUCCESS, "Sample season loaded") } catch (e: Exception) { show(Toast.Kind.ERROR, "Couldn't load the sample: ${e.message}") } }
     suspend fun eraseAllData() { val id = uid ?: return; repo.deleteEverything(id) }
 

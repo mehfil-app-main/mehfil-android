@@ -145,7 +145,7 @@ fun BusinessProfileSheet(store: AppStore, onDismiss: () -> Unit) {
         }) {
             InputField("Business name", business, { business = it })
             InputField("Your name", owner, { owner = it })
-            InputField("Phone", phone, { phone = it }, helper = "Shown to clients on the page you share with them.", keyboard = KeyboardType.Phone)
+            PhoneField(phone, { phone = it }, helper = "Shown to clients on the page you share with them.")
             InputField("Area", area, { area = it }, placeholder = "Sector 44, Gurugram")
             InputField("Operating since", since, { since = it }, placeholder = "since 2018")
             InputField("Season target (₹)", target, { target = it.filter(Char::isDigit) }, placeholder = "6000000", helper = "The bar on the season summary measures bookings against this.", keyboard = KeyboardType.Number)
@@ -199,7 +199,7 @@ fun ClientSheet(store: AppStore, client: Client, onDismiss: () -> Unit) {
     EditSheet(onDismiss) {
         SheetContent("Edit client", actions = { MButton("Save", { store.updateClient(client.copy(name = name.trim(), phone = phone, isRepeat = isRepeat)); onDismiss() }, enabled = name.isNotBlank()) }) {
             InputField("Name", name, { name = it })
-            InputField("Phone", phone, { phone = it }, keyboard = KeyboardType.Phone)
+            PhoneField(phone, { phone = it })
             ToggleRow("Repeat client", null, isRepeat) { isRepeat = it }
         }
     }

@@ -29,6 +29,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Backspace
 import androidx.compose.material.icons.outlined.Cancel
@@ -47,7 +49,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +72,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mehfil.app.R
+import com.mehfil.app.model.Fmt
 import com.mehfil.app.model.AttendanceState
 import com.mehfil.app.model.CrewMember
 import com.mehfil.app.model.MilestoneStatus
@@ -284,26 +289,52 @@ fun InputField(
     val m = M
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    var revealed by remember { mutableStateOf(false) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(Space.sm)) {
         Text(label, style = Type.caption, color = m.textMute)
         Row(
             Modifier.fillMaxWidth().heightIn(min = minHeight).clip(FieldShape).background(m.surface)
                 .border(1.dp, if (error != null) m.danger else if (focused) m.text else m.lineInput, FieldShape)
-                .padding(horizontal = Space.md, vertical = if (singleLine) 0.dp else Space.md),
+                .padding(start = Space.md, end = if (password) 0.dp else Space.md)
+                .padding(vertical = if (singleLine) 0.dp else Space.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BasicTextField(
                 value = value, onValueChange = onValueChange, modifier = Modifier.weight(1f), singleLine = singleLine,
                 textStyle = Type.bodyMd.copy(color = m.text), cursorBrush = SolidColor(m.text), interactionSource = interaction,
                 keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard),
-                visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+                visualTransformation = if (password && !revealed) PasswordVisualTransformation() else VisualTransformation.None,
                 decorationBox = { inner -> Box { if (value.isEmpty()) Text(placeholder, style = Type.bodyMd, color = m.textMute); inner() } },
             )
-            if (trailing != null) Icon(trailing, null, Modifier.size(18.dp), tint = m.textMute)
+            if (password) Box(
+                Modifier.size(Dim.touch).clickable { revealed = !revealed },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (revealed) "Hide password" else "Show password", Modifier.size(18.dp), tint = m.textMute)
+            } else if (trailing != null) Icon(trailing, null, Modifier.size(18.dp), tint = m.textMute)
         }
         if (error != null) Text(error, style = Type.caption, color = m.danger)
         else if (helper != null) Text(helper, style = Type.caption, color = m.textMute)
     }
+}
+
+/**
+ * A phone field that accepts digits only, caps at 10, and shows why a number is rejected.
+ * [onValueChange] always receives digits — formatting for display happens at the point of use.
+ */
+@Composable
+fun PhoneField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = "Phone",
+    placeholder: String = "98100 00000",
+    helper: String? = null,
+) {
+    InputField(
+        label, value, { onValueChange(Fmt.phoneDigitsOnly(it)) }, modifier,
+        placeholder = placeholder, helper = helper, error = Fmt.phoneProblem(value), keyboard = KeyboardType.Number,
+    )
 }
 
 /** Field-shaped row that opens a picker or a date sheet. */

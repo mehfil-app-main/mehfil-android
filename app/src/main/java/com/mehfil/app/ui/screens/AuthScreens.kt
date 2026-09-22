@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.AutoDelete
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CurrencyRupee
@@ -61,6 +62,7 @@ import com.mehfil.app.model.AuthCancelled
 import com.mehfil.app.model.AuthService
 import com.mehfil.app.model.Feature
 import com.mehfil.app.model.Features
+import com.mehfil.app.model.Fmt
 import com.mehfil.app.model.Toast
 import com.mehfil.app.model.VendorProfile
 import com.mehfil.app.ui.Nav
@@ -303,12 +305,12 @@ fun OnboardingScreen(store: AppStore, account: Account) {
                     store.completeOnboarding(VendorProfile(owner.trim(), business.trim(), phone, area, "since ${java.time.LocalDate.now().year}"), loadSample && Features[Feature.SAMPLE_SEASON])
                     saving = false
                 }
-            }, enabled = owner.isNotBlank() && business.isNotBlank(), loading = saving)
+            }, enabled = owner.isNotBlank() && business.isNotBlank() && Fmt.isValidPhone(phone), loading = saving)
         },
     ) {
         InputField("Your name", owner, { owner = it }, placeholder = "Anand Mehra")
         InputField("Business name", business, { business = it }, placeholder = "Mehfil Decor")
-        InputField("Phone", phone, { phone = it }, placeholder = "98110 08123", helper = "Shown to clients on the page you share with them.", keyboard = KeyboardType.Phone)
+        PhoneField(phone, { phone = it }, placeholder = "98110 08123", helper = "Shown to clients on the page you share with them.")
         InputField("Area", area, { area = it }, placeholder = "Sector 44, Gurugram")
         if (Features[Feature.SAMPLE_SEASON]) Row(Modifier.fillMaxWidth().padding(top = Space.sm), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -331,6 +333,7 @@ fun AccountScreen(store: AppStore, nav: Nav) {
     val scope = rememberCoroutineScope()
     val uri = LocalUriHandler.current
     var confirmErase by remember { mutableStateOf(false) }
+    var confirmRemoveSample by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var passwordSheet by remember { mutableStateOf(false) }
     var flagsSheet by remember { mutableStateOf(false) }
@@ -355,6 +358,10 @@ fun AccountScreen(store: AppStore, nav: Nav) {
                     ListRow("Load the sample season", subtitle = "Adds the demo events, crew and payments", onClick = { scope.launch { store.loadSampleSeason() } }, leading = { IconTile(Icons.Outlined.AutoAwesome) }) { Chevron() }
                     Hairline(68.dp)
                 }
+                if (Features[Feature.REMOVE_SAMPLE_SEASON]) {
+                    ListRow("Remove the sample season", subtitle = "Deletes only the demo records — your own work stays", onClick = { confirmRemoveSample = true }, leading = { IconTile(Icons.Outlined.AutoDelete) }) { Chevron() }
+                    Hairline(68.dp)
+                }
                 ListRow("Erase all data", subtitle = "Events, clients, crew, inventory and payments", onClick = { confirmErase = true }, leading = { IconTile(Icons.Outlined.DeleteOutline, tint = m.danger) }) { Chevron() }
             }
             if (BuildConfig.DEBUG) RowGroup {
@@ -375,6 +382,12 @@ fun AccountScreen(store: AppStore, nav: Nav) {
     }
     if (passwordSheet) ChangePasswordSheet(store) { passwordSheet = false }
     if (flagsSheet) FeatureFlagsSheet { flagsSheet = false }
+    if (confirmRemoveSample) ModalBottomSheet(onDismissRequest = { confirmRemoveSample = false }, containerColor = m.surface) {
+        SheetContent("Remove the sample season?", "The twelve demo events and their clients, crew, inventory, payments and tasks go. Anything you created yourself stays exactly as it is.", actions = {
+            MButton("Remove the sample data", { confirmRemoveSample = false; perform { store.removeSampleSeason() } }, kind = ButtonKind.DESTRUCTIVE)
+            MButton("Keep it", { confirmRemoveSample = false }, kind = ButtonKind.TERTIARY, compact = true)
+        }) {}
+    }
     if (confirmErase) ModalBottomSheet(onDismissRequest = { confirmErase = false }, containerColor = m.surface) {
         SheetContent("Erase everything in ${store.vendor?.businessName ?: "Mehfil"}?", "Every event, client, crew member, item and payment record goes. Your account and profile stay.", actions = {
             MButton("Erase all data", { confirmErase = false; perform { store.eraseAllData(); store.show(Toast.Kind.INFO, "All data erased") } }, kind = ButtonKind.DESTRUCTIVE)

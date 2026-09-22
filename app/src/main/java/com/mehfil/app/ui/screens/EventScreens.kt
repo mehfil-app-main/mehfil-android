@@ -337,7 +337,7 @@ fun CreateEventScreen(store: AppStore, nav: Nav) {
         }
         if (step == 1) {
             InputField("Client name", d.clientName, { v -> store.updateDraft { it.copy(clientName = v) } }, placeholder = "Surname the family goes by")
-            InputField("Phone", d.phone, { v -> store.updateDraft { it.copy(phone = v) } }, placeholder = "98100 00000", keyboard = KeyboardType.Phone)
+            PhoneField(d.phone, { v -> store.updateDraft { it.copy(phone = v) } })
             PickerField("Event type", d.type?.label ?: "", { showType = true })
             PickerField("Date", d.date?.let { Fmt.weekdayLongYear(it) } ?: "", { showDate = true }, placeholder = "Pick a date", trailing = Icons.Outlined.CalendarToday, highlighted = d.date != null)
             if (d.date != null && conflicts.isNotEmpty()) {

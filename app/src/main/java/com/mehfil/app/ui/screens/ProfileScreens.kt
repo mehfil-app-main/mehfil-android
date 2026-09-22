@@ -238,7 +238,7 @@ fun EnquiryIntakeScreen(store: AppStore, nav: Nav, enquiryId: String?) {
         },
     ) {
         InputField("Name", name, { name = it }, placeholder = "Who is asking")
-        InputField("Phone", phone, { phone = it }, placeholder = "98100 00000", keyboard = KeyboardType.Phone)
+        PhoneField(phone, { phone = it })
         PickerField("Source", source, { showSource = true })
         PickerField("Budget range", budget, { showBudget = true })
         PickerField("Tentative date", date?.let { Fmt.weekdayLongYear(it) } ?: "", { showDate = true }, placeholder = "Pick a date", trailing = Icons.Outlined.CalendarToday, highlighted = date != null)
