@@ -447,7 +447,7 @@ fun RowGroup(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 
 @Composable fun Hairline(inset: Dp = Space.lg) = HorizontalDivider(Modifier.padding(start = inset), thickness = 1.dp, color = M.line)
 
-/** design.md card: surface + hairline + Level 1, radius lg. */
+/** Card: surface + hairline + Level 1, radius lg. */
 @Composable
 fun Card(modifier: Modifier = Modifier, fill: Color = M.surface, padding: Dp = Space.lg, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val base = modifier.fillMaxWidth()
@@ -539,7 +539,7 @@ fun ToastView(toast: Toast, modifier: Modifier = Modifier) {
     }
 }
 
-/** Tri-state control (D3): confirmed = outline · arrived = filled emphasis · absent = ruby outline on ruby tint. */
+/** Tri-state control (D3): confirmed = outline · arrived = filled emphasis · absent = danger outline on danger tint. */
 @Composable
 fun TriState(state: AttendanceState, onClick: () -> Unit) {
     val m = M

@@ -73,8 +73,8 @@ enum class Tab(val route: String, val title: String, val icon: ImageVector) {
 
 /**
  * The tab bar: a floating capsule that clears the content, matching the iOS build rather than Material's
- * full-width bar. Rausch marks the selected tab through its icon and label (NOTES: Rausch is the single
- * voltage); the pill behind it is neutral, so the accent is never doubled.
+ * full-width bar. The accent marks the selected tab through its icon and label (NOTES: one accent, spent
+ * sparingly); the pill behind it is neutral, so the accent is never doubled.
  */
 @Composable
 private fun FloatingTabBar(selected: Tab, onSelect: (Tab) -> Unit) {

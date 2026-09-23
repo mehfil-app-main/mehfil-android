@@ -23,21 +23,22 @@ import androidx.core.view.WindowCompat
 import com.mehfil.app.R
 import com.mehfil.app.model.EventHue
 
-// Source of truth: tokens.css — Airbnb skin. Palette primitives are documented hues from DESIGN-airbnb.md;
-// everything else is an alias or an alpha of one.
+// Source of truth: tokens.css; the reasoning lives in NOTES.md. Palette primitives are the only hues in the
+// app; everything else is an alias or an alpha of one.
 //
-// What changed from the previous (Stripe) skin, per NOTES.md: ground and surface are both white and structure
-// comes from hairlines and 14dp clipping; Rausch is the single voltage, spent only on filled CTAs, the FAB, the
-// selected tab, save/assign, the hero bar and event 1; one shadow tier, reserved for things that float; buttons
-// and inputs are 8dp, cards 14dp, sheets 20dp, chips and avatars pill.
+// The system in brief: ground and surface are both white and structure comes from hairlines and 14dp clipping;
+// rani is the single accent, spent only on filled CTAs, the FAB, the selected tab, save/assign, the hero bar,
+// event 1 and chart bars (links, nav and date selection are ink); one shadow tier, reserved for things that float; buttons and inputs are 8dp, cards 14dp, sheets 20dp,
+// chips and avatars pill.
 
 object Palette {
-    val rausch = Color(0xFFFF385C)
-    val rauschActive = Color(0xFFE00B41)
-    val rauschDisabled = Color(0xFFFFD1DA)
+    /** Rani pink — the accent. White text on it is 4.84:1, so filled buttons pass AA. */
+    val rani = Color(0xFFD6246E)
+    val raniPress = Color(0xFFB81F5F)
+    val raniPale = Color(0xFFF6CFDF)
     val error = Color(0xFFC13515)
-    val luxe = Color(0xFF460479)
-    val plus = Color(0xFF92174D)
+    val plum = Color(0xFF5B2C83)
+    val forest = Color(0xFF2E6B4F)
     val ink = Color(0xFF222222)
     val body = Color(0xFF3F3F3F)
     val muted = Color(0xFF6A6A6A)
@@ -50,23 +51,26 @@ object Palette {
     val surfaceStrong = Color(0xFFF2F2F2)
     val onPrimary = Color.White
     val onDark = Color.White
-    val legalLink = Color(0xFF428BFF)
+    val azure = Color(0xFF428BFF)
 
     /**
-     * Avatar hues. Eight colours that all carry white text at 4.5:1 or better and stay distinguishable from
+     * Avatar hues. Eight colours that all carry white text at 6:1 or better and stay distinguishable from
      * each other and from the status colours. Assigned by hashing the person's name, so the same client keeps
-     * the same tile on every device (see Initials).
+     * the same tile on every device (see Initials). Identical to the iOS list: rose, berry, plum, blue, teal,
+     * amber, slate, ink.
      */
     val avatarHues = listOf(
-        Color(0xFFBF3A5C), Color(0xFF92174D), Color(0xFF460479), Color(0xFF225A9E),
+        Color(0xFFB81F5F), Color(0xFF7E2349), Color(0xFF5B2C83), Color(0xFF225A9E),
         Color(0xFF1C665C), Color(0xFF734D21), Color(0xFF4D596B), Color(0xFF222222),
     )
 
-    // DERIVED dark values: any documented hue below 4.5:1 on ink, mixed toward canvas until it passes.
+    // DERIVED dark values: any hue below 4.5:1 on ink, mixed toward canvas until it passes.
     val darkSurface = Color(0xFF2F2F2F)
+    val darkAccent = Color(0xFFE573A2)       // rani + 36% canvas (5.5:1 on ink, 4.7:1 on dark surface)
+    val darkAccentPress = Color(0xFFD26B95)  // darkAccent 10% toward ink (ink text 4.8:1)
     val darkDanger = Color(0xFFD4725B)
-    val darkWarn = Color(0xFFA282BC)
-    val darkEvent2 = Color(0xFFBE7494)
+    val darkWarn = Color(0xFFA68DBC)         // plum + 46% canvas
+    val darkForest = Color(0xFF79A08E)       // forest + 36% canvas
 }
 
 /** Semantic aliases, resolved once per theme. */
@@ -88,37 +92,38 @@ data class MColors(
 }
 
 val LightColors = MColors(
-    ground = Palette.canvas, surface = Palette.canvas, surfacePressed = Palette.surfaceSoft, surfaceSelected = Palette.rausch.copy(alpha = 0.08f),
+    ground = Palette.canvas, surface = Palette.canvas, surfacePressed = Palette.surfaceSoft, surfaceSelected = Palette.rani.copy(alpha = 0.08f),
     text = Palette.ink, textSecondary = Palette.body, textMute = Palette.muted, textOnPrimary = Palette.onPrimary,
     line = Palette.hairline, lineInput = Palette.hairline,
     fillSoft = Palette.surfaceSoft, fillStrong = Palette.surfaceStrong, lineSoft = Palette.hairlineSoft,
-    // accentText is deliberately ink, not Rausch: Airbnb's inline links are ink with an underline.
-    accent = Palette.rausch, accentPress = Palette.rauschActive, accentText = Palette.ink, accentTint = Palette.rausch.copy(alpha = 0.08f),
-    accentPale = Palette.rauschDisabled, accentSoftBg = Palette.surfaceStrong, accentSoftText = Palette.ink,
+    // accentText is deliberately ink, not the accent: inline links are ink with an underline, so the accent stays rare.
+    accent = Palette.rani, accentPress = Palette.raniPress, accentText = Palette.ink, accentTint = Palette.rani.copy(alpha = 0.08f),
+    accentPale = Palette.raniPale, accentSoftBg = Palette.surfaceStrong, accentSoftText = Palette.ink,
     settledBg = Palette.ink, settledText = Palette.onDark,
-    danger = Palette.error, dangerTint = Palette.error.copy(alpha = 0.08f), warn = Palette.luxe, warnTint = Palette.luxe.copy(alpha = 0.08f),
-    disabledBg = Palette.rauschDisabled, disabledText = Palette.onPrimary,
-    toastBg = Palette.ink, toastText = Palette.onDark, toastSuccess = Palette.onDark, toastError = Palette.rausch, toastInfo = Palette.mutedSoft,
+    danger = Palette.error, dangerTint = Palette.error.copy(alpha = 0.08f), warn = Palette.plum, warnTint = Palette.plum.copy(alpha = 0.08f),
+    disabledBg = Palette.raniPale, disabledText = Palette.onPrimary,
+    toastBg = Palette.ink, toastText = Palette.onDark, toastSuccess = Palette.onDark, toastError = Palette.rani, toastInfo = Palette.mutedSoft,
     scrim = Color.Black.copy(alpha = 0.5f), emphasisBg = Palette.ink, emphasisText = Palette.onDark,
     segmentSelected = Palette.canvas, segmentTrack = Palette.surfaceStrong,
-    event1 = Palette.rausch, event2 = Palette.plus, event3 = Palette.legalLink, event4 = Palette.ink,
+    event1 = Palette.rani, event2 = Palette.forest, event3 = Palette.azure, event4 = Palette.ink,
     shadow = Color.Black.copy(alpha = 0.10f), isDark = false,
 )
 
 val DarkColors = MColors(
-    ground = Palette.ink, surface = Palette.darkSurface, surfacePressed = Color.White.copy(alpha = 0.06f), surfaceSelected = Palette.rausch.copy(alpha = 0.16f),
-    text = Palette.onDark, textSecondary = Palette.hairline, textMute = Palette.mutedSoft, textOnPrimary = Palette.onPrimary,
+    ground = Palette.ink, surface = Palette.darkSurface, surfacePressed = Color.White.copy(alpha = 0.06f), surfaceSelected = Palette.rani.copy(alpha = 0.16f),
+    // Ink, not white: the lifted accent is too light for white text (2.9:1), and white on the dark danger fill fails too (3.3:1).
+    text = Palette.onDark, textSecondary = Palette.hairline, textMute = Palette.mutedSoft, textOnPrimary = Palette.ink,
     line = Color.White.copy(alpha = 0.14f), lineInput = Color.White.copy(alpha = 0.28f),
     fillSoft = Color.White.copy(alpha = 0.06f), fillStrong = Color.White.copy(alpha = 0.10f), lineSoft = Color.White.copy(alpha = 0.08f),
-    accent = Palette.rausch, accentPress = Palette.rauschActive, accentText = Palette.onDark, accentTint = Palette.rausch.copy(alpha = 0.16f),
-    accentPale = Palette.rausch.copy(alpha = 0.42f), accentSoftBg = Color.White.copy(alpha = 0.10f), accentSoftText = Palette.onDark,
+    accent = Palette.darkAccent, accentPress = Palette.darkAccentPress, accentText = Palette.onDark, accentTint = Palette.rani.copy(alpha = 0.16f),
+    accentPale = Palette.rani.copy(alpha = 0.42f), accentSoftBg = Color.White.copy(alpha = 0.10f), accentSoftText = Palette.onDark,
     settledBg = Palette.canvas, settledText = Palette.ink,
-    danger = Palette.darkDanger, dangerTint = Palette.error.copy(alpha = 0.18f), warn = Palette.darkWarn, warnTint = Palette.luxe.copy(alpha = 0.30f),
+    danger = Palette.darkDanger, dangerTint = Palette.error.copy(alpha = 0.18f), warn = Palette.darkWarn, warnTint = Palette.plum.copy(alpha = 0.30f),
     disabledBg = Color.White.copy(alpha = 0.10f), disabledText = Color.White.copy(alpha = 0.45f),
     toastBg = Palette.canvas, toastText = Palette.ink, toastSuccess = Palette.ink, toastError = Palette.error, toastInfo = Palette.muted,
     scrim = Color.Black.copy(alpha = 0.5f), emphasisBg = Palette.canvas, emphasisText = Palette.ink,
     segmentSelected = Color.White.copy(alpha = 0.18f), segmentTrack = Color.White.copy(alpha = 0.08f),
-    event1 = Palette.rausch, event2 = Palette.darkEvent2, event3 = Palette.legalLink, event4 = Palette.hairline,
+    event1 = Palette.darkAccent, event2 = Palette.darkForest, event3 = Palette.azure, event4 = Palette.hairline,
     shadow = Color.Black.copy(alpha = 0.40f), isDark = true,
 )
 
@@ -138,7 +143,7 @@ val FieldShape = RoundedCornerShape(Radius.sm)    // rounded.sm — inputs
 val ButtonShape = RoundedCornerShape(Radius.sm)   // rounded.sm — buttons are no longer pills
 val SheetShape = RoundedCornerShape(topStart = Radius.xl, topEnd = Radius.xl)
 
-// Type roles (tokens.css — Airbnb skin). Inter at 400–700; Light (300) is gone, Airbnb's lightest weight is 400.
+// Type roles (tokens.css). Inter at 400–700: 400 is the lightest weight in the scale, and headings lean on 600/700.
 val Inter = FontFamily(
     Font(R.font.inter_regular, FontWeight.Normal),
     Font(R.font.inter_medium, FontWeight.Medium),
@@ -152,34 +157,34 @@ private fun role(size: Int, weight: FontWeight, lh: Double, ls: Double, tabular:
 )
 
 object Type {
-    val displayHero = role(40, FontWeight.Bold, 1.1, -0.63, tabular = true)   // DERIVED from rating-display 64
-    val displayLg = role(28, FontWeight.Bold, 1.25, 0.0)                      // display-xl
-    val displayMd = role(22, FontWeight.Medium, 1.18, -0.44)                  // display-lg — screen titles
-    val headingLg = role(21, FontWeight.Bold, 1.43, 0.0)                      // display-md
-    val headingMd = role(20, FontWeight.SemiBold, 1.2, -0.18)                 // display-sm — sheet titles
-    val headingSm = role(16, FontWeight.SemiBold, 1.25, 0.0)                  // title-md — card titles
-    val bodyLg = role(16, FontWeight.Normal, 1.5, 0.0)                        // body-md — E2 and lead copy
-    val bodyMd = role(14, FontWeight.Normal, 1.43, 0.0)                       // body-sm — default UI text
-    val bodyMdStrong = role(16, FontWeight.SemiBold, 1.25, 0.0)               // title-md — row primary label
+    val displayHero = role(40, FontWeight.Bold, 1.1, -0.63, tabular = true)   // the rupee hero: 64 collides with the chevron at 361pt (NOTES.md)
+    val displayLg = role(28, FontWeight.Bold, 1.25, 0.0)                      // E2 title
+    val displayMd = role(22, FontWeight.Medium, 1.18, -0.44)                  // screen titles
+    val headingLg = role(21, FontWeight.Bold, 1.43, 0.0)
+    val headingMd = role(20, FontWeight.SemiBold, 1.2, -0.18)                 // sheet titles
+    val headingSm = role(16, FontWeight.SemiBold, 1.25, 0.0)                  // card titles
+    val bodyLg = role(16, FontWeight.Normal, 1.5, 0.0)                        // E2 and lead copy
+    val bodyMd = role(14, FontWeight.Normal, 1.43, 0.0)                       // default UI text
+    val bodyMdStrong = role(16, FontWeight.SemiBold, 1.25, 0.0)               // a row's primary label
     val bodyTabular = role(14, FontWeight.Normal, 1.43, 0.0, tabular = true)
     val bodyTabularStrong = role(14, FontWeight.Medium, 1.29, 0.0, tabular = true)
     val buttonMd = role(16, FontWeight.Medium, 1.25, 0.0)
     val buttonSm = role(14, FontWeight.Medium, 1.29, 0.0)
-    val caption = role(13, FontWeight.Normal, 1.23, 0.0)                      // caption-sm — the load-bearing floor
-    val micro = role(12, FontWeight.Bold, 1.33, 0.0)                          // micro-label
-    val microCap = role(11, FontWeight.SemiBold, 1.18, 0.0)                   // badge — tab labels, eyebrows only
+    val caption = role(13, FontWeight.Normal, 1.23, 0.0)                      // the load-bearing floor
+    val micro = role(12, FontWeight.Bold, 1.33, 0.0)
+    val microCap = role(11, FontWeight.SemiBold, 1.18, 0.0)                   // tab labels, eyebrows only
 }
 
 @Composable
 fun MehfilTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val colors = if (dark) DarkColors else LightColors
     val scheme = if (dark) darkColorScheme(
-        primary = Palette.rausch, onPrimary = Palette.onPrimary, background = Palette.ink, onBackground = Palette.onDark,
+        primary = Palette.darkAccent, onPrimary = Palette.ink, background = Palette.ink, onBackground = Palette.onDark,
         surface = Palette.darkSurface, onSurface = Palette.onDark, surfaceVariant = Palette.darkSurface, onSurfaceVariant = Palette.mutedSoft,
         outline = colors.line, secondary = Palette.onDark, error = Palette.darkDanger, surfaceContainer = Palette.darkSurface, surfaceContainerLow = Palette.darkSurface,
         surfaceContainerHigh = Palette.darkSurface, surfaceContainerHighest = Palette.darkSurface,
     ) else lightColorScheme(
-        primary = Palette.rausch, onPrimary = Palette.onPrimary, background = Palette.canvas, onBackground = Palette.ink,
+        primary = Palette.rani, onPrimary = Palette.onPrimary, background = Palette.canvas, onBackground = Palette.ink,
         surface = Palette.canvas, onSurface = Palette.ink, surfaceVariant = Palette.surfaceSoft, onSurfaceVariant = Palette.muted,
         outline = Palette.hairline, secondary = Palette.ink, error = Palette.error, surfaceContainer = Palette.canvas, surfaceContainerLow = Palette.canvas,
         surfaceContainerHigh = Palette.canvas, surfaceContainerHighest = Palette.surfaceSoft,
@@ -197,5 +202,5 @@ fun MehfilTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -
     }
 }
 
-/** Level-1 card elevation as a soft shadow (design.md). */
+/** Level-1 card elevation as a soft shadow. */
 val cardElevation: Dp = 1.dp

@@ -281,8 +281,7 @@ fun SharedEventPageScreen(store: AppStore, nav: Nav, eventId: String) {
         return s
     }
     Box(Modifier.fillMaxSize().background(Palette.canvas)) {
-        // The gradient mesh was the previous skin's signature and has no Airbnb equivalent: an Airbnb listing
-        // page is a white canvas where the photographs do the work.
+        // The client's page is a white canvas where the moodboard photographs do the work, not a decorative gradient.
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Spacer(Modifier.height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding()))
             Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = Dim.gutter), verticalAlignment = Alignment.CenterVertically) {

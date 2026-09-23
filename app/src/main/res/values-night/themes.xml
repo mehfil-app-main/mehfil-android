@@ -1,6 +1,6 @@
 <resources>
     <style name="Theme.Mehfil" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#0D253D</item>
+        <item name="android:windowBackground">#222222</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>

@@ -9,3 +9,6 @@ keystore.properties
 *.jks
 *.keystore
 .DS_Store
+
+# Android Studio "Generate Signed App Bundle / APK" output
+app/release/

@@ -3,7 +3,7 @@
 Operations app for Indian wedding-service vendors — decorators, caterers, photographers, light-and-sound crews. The calendar is the spine, outstanding money is always one tap away, and double-bookings surface before they become a problem.
 
 Built in **Kotlin + Jetpack Compose (Material 3)**, from the Figma design
-[Mehfil](https://www.figma.com/design/HiKVpYsO9qLnUAWF1iZrUY/Untitled?node-id=3-2): 24 screens, 18 components, light and dark, on the Airbnb-derived skin. Accounts and data live in **Firebase** (Google, Sign in with Apple, Cloud Firestore) — the rules and data model are in the sibling repo `mehfil-backend`; the iOS app (SwiftUI, Liquid Glass) is `mehfil-ios`.
+[Mehfil](https://www.figma.com/design/HiKVpYsO9qLnUAWF1iZrUY/Untitled?node-id=3-2): 24 screens, 18 components, light and dark. Accounts and data live in **Firebase** (Google, Sign in with Apple, Cloud Firestore) — the rules and data model are in the sibling repo `mehfil-backend`; the iOS app (SwiftUI, Liquid Glass) is `mehfil-ios`.
 
 <p>
   <img src="docs/screenshots/home.png" width="180" alt="Home">
@@ -16,8 +16,8 @@ Built in **Kotlin + Jetpack Compose (Material 3)**, from the Figma design
 
 The code is a translation of a documented design process, not a sketch that grew. Before reading a single
 screen, read **[`NOTES.md`](https://github.com/Sanu5/mehfil-design/blob/main/NOTES.md)** in the design
-repository: six phases of decisions, every derivation from the source design system, the rulings applied in
-review, and the full skin migration — with the measurements that forced each change. `tokens.css` there is the
+repository: the principles of the system and the reasoning behind every token, six phases of decisions, the
+rulings applied in review, and the measurements that forced each change. `tokens.css` there is the
 single source of truth that both apps' token files are generated against.
 
 Commercial terms, the transfer checklist and an honest account of the repository's history are in
@@ -31,7 +31,7 @@ Commercial terms, the transfer checklist and an honest account of the repository
 | **B · Events** | Segmented list grouped by month · Event hub with summary tiles, collapsible Payments, Crew, Inventory and Runsheet · Two-step create with an inline conflict check the moment a date is picked · Runsheet with completion toggles and reorder · Change request that shows consequences (chairs, tables, helpers, transport) and the revised quote |
 | **C · Money** | Receivables grouped Overdue → Due this week → Upcoming · Per-event payment schedule with collection progress · Record payment on a large numeric keypad (never the alphanumeric keyboard) · Reminders with real composed copy in three tones and the history of what was sent before · Expenses with the margin and a loss state |
 | **D · Team & inventory** | Crew by role with availability for a chosen date · Assign crew where booked members stay tappable and open a comparison of both events · Attendance with a single-tap three-state control · Inventory with commitment bars and over-committed items first · Item detail with a 30-day commitment strip |
-| **E · Clients & system** | Client list with lifetime value and repeat markers · The client-facing shared event page (cream, gradient mesh, always light, share sheet) · Enquiry intake that saves, edits, closes and converts to an event · Package templates · Profile with business details, payment details, notifications, appearance · Account with sample data, erase, sign out and account deletion |
+| **E · Clients & system** | Client list with lifetime value and repeat markers · The client-facing shared event page (white, photography-led, always light, share sheet) · Enquiry intake that saves, edits, closes and converts to an event · Package templates · Profile with business details, payment details, notifications, appearance · Account with sample data, erase, sign out and account deletion |
 | **Sign-in & data** | Welcome with Google (Credential Manager), email and password (verified by email), and Sign in with Apple (behind `APPLE_SIGN_IN`) · One-screen business onboarding with an optional sample season · Every record (events, clients, milestones, crew, attendance, inventory, runsheet, reminders, expenses, enquiries, packages, change requests) is a Firestore document under `vendors/{uid}`, cached offline and streamed live |
 
 Every amount uses Indian digit grouping (`₹23,47,500`), every screen that modifies data writes through the store and shows a save state, and the event draft survives leaving the create flow. Overdue milestones, crew conflicts, payment states and season totals are **derived on the device from stored data**, never stored, so they can't go stale.
@@ -106,7 +106,7 @@ app/src/main/res/font/   Inter Light/Regular/Medium (SIL Open Font License, see 
 
 - "Today" is live (`Cal.today`). The sample season is shifted by whole weeks so its busy Saturday is always the coming one — the conflict banner, overdue money and "Needs attention" read correctly on any date.
 - Nothing derived is stored: overdue is computed from due dates, crew conflicts from bookings, payment state from milestones. Firestore rules (`mehfil-backend/firestore.rules`) allow only the owner to touch `vendors/{uid}`.
-- Tokens come straight from the design's `tokens.css`: white ground and surface with structure carried by hairlines and 14pt clipping, ink type at 400–700, Rausch `#ff385c` as the single voltage (filled CTAs, the FAB, the selected tab, save/assign, the hero bar, event 1 — never links or data-viz), one shadow tier reserved for things that float, and a dark set derived by mixing any hue below 4.5:1 toward canvas until it passes.
+- Tokens come straight from the design's `tokens.css`: white ground and surface with structure carried by hairlines and 14pt clipping, ink type at 400–700, rani `#D6246E` as the single accent (filled CTAs, the FAB, the selected tab, save/assign, the hero bar, event 1 and chart bars — never links), one shadow tier reserved for things that float, and a dark set derived by mixing any hue below 4.5:1 toward canvas until it passes — which lifts the accent to `#E573A2` in dark mode, with ink text on it.
 - Pushed screens drop the bottom navigation bar, as the design's tab-bar policy asks.
 - Decline on the change request is tertiary, not destructive; destructive confirmations name the exact thing being cancelled.
 - The client page (E2) has no dark variant on purpose — it is the client's page, opened from a WhatsApp link.
