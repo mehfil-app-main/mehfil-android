@@ -1,5 +1,7 @@
 package com.mehfil.app.model
 
+import com.mehfil.app.R
+
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -48,15 +50,19 @@ object Fmt {
     /** Digits for wa.me / tel: links — a bare 10-digit Indian number gets the 91 prefix. */
     fun phoneDigits(phone: String): String { val d = phone.filter { it.isDigit() }; return if (d.length == 10) "91$d" else d }
     /** Indian mobile numbers are 10 digits. Stored and compared as digits only; displayed grouped 5+5. */
-    fun phoneDigitsOnly(input: String): String = input.filter { it.isDigit() }.take(10)
+    fun phoneDigitsOnly(input: String): String = input.filter { it.isDigit() }.take(PHONE_LENGTH)
 
-    /** null when the number is acceptable, otherwise the reason. An empty number is allowed — phone is optional. */
-    fun phoneProblem(input: String): String? {
+    /** Indian mobile numbers are ten digits and never start below 6. */
+    const val PHONE_LENGTH = 10
+    private const val VALID_PHONE_PREFIXES = "6789"
+
+    /** The reason a number is unusable, as a string resource id, or null when it is fine (or empty — phone is optional). */
+    fun phoneProblem(input: String): Int? {
         val digits = input.filter { it.isDigit() }
         return when {
             digits.isEmpty() -> null
-            digits.length != 10 -> "A mobile number is 10 digits."
-            digits.first() !in "6789" -> "Indian mobile numbers start with 6, 7, 8 or 9."
+            digits.length != PHONE_LENGTH -> R.string.phone_wrong_length
+            digits.first() !in VALID_PHONE_PREFIXES -> R.string.phone_bad_prefix
             else -> null
         }
     }

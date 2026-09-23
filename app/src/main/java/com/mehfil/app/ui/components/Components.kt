@@ -69,6 +69,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mehfil.app.R
@@ -83,6 +84,7 @@ import com.mehfil.app.ui.theme.CardShape
 import com.mehfil.app.ui.theme.Dim
 import com.mehfil.app.ui.theme.FieldShape
 import com.mehfil.app.ui.theme.M
+import com.mehfil.app.ui.theme.Palette
 import com.mehfil.app.ui.theme.Radius
 import com.mehfil.app.ui.theme.Space
 import com.mehfil.app.ui.theme.Type
@@ -208,7 +210,6 @@ fun StatusChip(kind: ChipKind, modifier: Modifier = Modifier) {
 
 // MARK: - 07 Avatar / avatar stack
 
-private val avatarRes = listOf(R.drawable.avatar_1, R.drawable.avatar_2, R.drawable.avatar_3, R.drawable.avatar_4, R.drawable.avatar_5, R.drawable.avatar_6, R.drawable.avatar_7, R.drawable.avatar_8)
 
 @Composable
 fun Avatar(index: Int?, name: String, size: Dp = Dim.avatar, modifier: Modifier = Modifier) {
@@ -229,11 +230,7 @@ object Initials {
         return if (words.size > 1) "$first${words.last().first()}".uppercase() else first.uppercase().toString()
     }
 
-    /** Eight hues that all carry white text at 4.5:1 or better, on brand with the Airbnb skin. */
-    private val hues = listOf(
-        Color(0xFFBF3A5C), Color(0xFF92174D), Color(0xFF460479), Color(0xFF225A9E),
-        Color(0xFF1C665C), Color(0xFF734D21), Color(0xFF4D596B), Color(0xFF222222),
-    )
+    private val hues get() = Palette.avatarHues
 
     fun color(name: String): Color {
         if (name.isEmpty()) return hues.last()
@@ -310,7 +307,11 @@ fun InputField(
                 Modifier.size(Dim.touch).clickable { revealed = !revealed },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (revealed) "Hide password" else "Show password", Modifier.size(18.dp), tint = m.textMute)
+                Icon(
+                    if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                    stringResource(if (revealed) R.string.cd_hide_password else R.string.cd_show_password),
+                    Modifier.size(18.dp), tint = m.textMute,
+                )
             } else if (trailing != null) Icon(trailing, null, Modifier.size(18.dp), tint = m.textMute)
         }
         if (error != null) Text(error, style = Type.caption, color = m.danger)
@@ -333,7 +334,7 @@ fun PhoneField(
 ) {
     InputField(
         label, value, { onValueChange(Fmt.phoneDigitsOnly(it)) }, modifier,
-        placeholder = placeholder, helper = helper, error = Fmt.phoneProblem(value), keyboard = KeyboardType.Number,
+        placeholder = placeholder, helper = helper, error = Fmt.phoneProblem(value)?.let { stringResource(it) }, keyboard = KeyboardType.Number,
     )
 }
 

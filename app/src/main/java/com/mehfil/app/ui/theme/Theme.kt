@@ -52,6 +52,16 @@ object Palette {
     val onDark = Color.White
     val legalLink = Color(0xFF428BFF)
 
+    /**
+     * Avatar hues. Eight colours that all carry white text at 4.5:1 or better and stay distinguishable from
+     * each other and from the status colours. Assigned by hashing the person's name, so the same client keeps
+     * the same tile on every device (see Initials).
+     */
+    val avatarHues = listOf(
+        Color(0xFFBF3A5C), Color(0xFF92174D), Color(0xFF460479), Color(0xFF225A9E),
+        Color(0xFF1C665C), Color(0xFF734D21), Color(0xFF4D596B), Color(0xFF222222),
+    )
+
     // DERIVED dark values: any documented hue below 4.5:1 on ink, mixed toward canvas until it passes.
     val darkSurface = Color(0xFF2F2F2F)
     val darkDanger = Color(0xFFD4725B)
