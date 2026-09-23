@@ -1,3 +1,85 @@
-<resources>
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">Mehfil</string>
+
+    <!-- Failures. Storage and network errors are mapped to these; exception text is never shown. -->
+    <string name="error_offline">No connection. The change is saved on this device and will sync when you\'re back online.</string>
+    <string name="error_not_allowed">You don\'t have access to that record. Try signing out and back in.</string>
+    <string name="error_save">Couldn\'t save that. Try again.</string>
+    <string name="error_load_profile">Couldn\'t load your business details.</string>
+    <string name="error_save_profile">Couldn\'t save your business details.</string>
+    <string name="error_load_sample">Couldn\'t load the sample season.</string>
+    <string name="error_remove_sample">Couldn\'t remove the sample season.</string>
+    <string name="error_sign_in_failed">Sign-in failed. Try again.</string>
+    <string name="error_generic">Something went wrong.</string>
+
+    <!-- Confirmations -->
+    <string name="saved">Saved</string>
+    <string name="sample_loaded">Sample season loaded</string>
+    <string name="sample_removed">Sample season removed</string>
+    <string name="all_data_erased">All data erased</string>
+
+    <!-- Authentication -->
+    <string name="auth_cancelled">Sign-in was cancelled.</string>
+    <string name="auth_not_configured">Cloud sign-in is not configured in this build.</string>
+    <string name="auth_not_signed_in">You\'re not signed in.</string>
+    <string name="auth_email_invalid">That doesn\'t look like an email address.</string>
+    <string name="auth_email_in_use">An account already exists for this email. Sign in instead.</string>
+    <string name="auth_password_weak">That password is too easy to guess. Use at least 8 characters with a letter and a number.</string>
+    <string name="auth_credentials_wrong">Wrong email or password.</string>
+    <string name="auth_user_not_found">No account for that email. Create one first.</string>
+    <string name="auth_user_disabled">This account has been disabled.</string>
+    <string name="auth_too_many_requests">Too many attempts. Wait a few minutes and try again.</string>
+    <string name="auth_requires_recent_login">Please sign in again before making this change.</string>
+    <string name="auth_other_provider">This email is already used by another sign-in method. Use that one instead.</string>
+    <string name="auth_no_connection">No connection. Check your internet and try again.</string>
+    <string name="auth_no_id_token">Google didn\'t return a sign-in token. Try again.</string>
+
+    <!-- Password and phone rules -->
+    <string name="password_too_short">Use at least 8 characters.</string>
+    <string name="password_needs_letter">Include at least one letter.</string>
+    <string name="password_needs_number">Include at least one number.</string>
+    <string name="password_mismatch">The two passwords don\'t match.</string>
+    <string name="phone_wrong_length">A mobile number is 10 digits.</string>
+    <string name="phone_bad_prefix">Indian mobile numbers start with 6, 7, 8 or 9.</string>
+
+    <!-- Payment reminders the vendor sends to a client. Ordered arguments so a translation can reorder them. -->
+    <string name="reminder_gentle">Hi %1$s, hope the preparations are going well! Just a gentle nudge — the %2$s of %3$s for the %4$s was due on %5$s. Whenever convenient this week works. Thanks so much — %6$s, %7$s</string>
+    <string name="reminder_standard">Hi %1$s, a reminder that the %2$s of %3$s for the %4$s on %5$s was due on %6$s. You can pay %7$s. Thank you — %8$s, %9$s</string>
+    <string name="reminder_firm">%1$s, the %2$s of %3$s for the %4$s on %5$s is %6$d days overdue. We need it cleared by tomorrow to hold the crew and inventory for your date. Please pay %7$s. — %8$s, %9$s</string>
+    <string name="reminder_pay_bank">by bank transfer</string>
+    <string name="reminder_pay_upi_or_bank">by UPI to %1$s or by bank transfer</string>
+    <string name="reminder_pay_today">today</string>
+    <string name="reminder_pay_upi_today">by UPI to %1$s today</string>
+
+    <!-- Content descriptions for controls whose meaning is carried by an icon alone. -->
+    <string name="cd_back">Back</string>
+    <string name="cd_share">Share</string>
+    <string name="cd_more_options">More options</string>
+    <string name="cd_show_password">Show password</string>
+    <string name="cd_hide_password">Hide password</string>
+    <string name="cd_call_client">Call %1$s</string>
+    <string name="cd_message_client">Message %1$s</string>
+
+    <!-- Counts that must agree with the number in front of them. -->
+    <plurals name="event_count">
+        <item quantity="one">%d event</item>
+        <item quantity="other">%d events</item>
+    </plurals>
+    <plurals name="crew_count">
+        <item quantity="one">%d crew</item>
+        <item quantity="other">%d crew</item>
+    </plurals>
+    <plurals name="task_count">
+        <item quantity="one">%d task</item>
+        <item quantity="other">%d tasks</item>
+    </plurals>
+    <plurals name="client_count">
+        <item quantity="one">%d client</item>
+        <item quantity="other">%d clients</item>
+    </plurals>
+    <plurals name="days_overdue">
+        <item quantity="one">%d day late</item>
+        <item quantity="other">%d days late</item>
+    </plurals>
 </resources>
