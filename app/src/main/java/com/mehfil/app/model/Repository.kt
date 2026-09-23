@@ -19,8 +19,11 @@ interface Repository {
     val isCloud: Boolean
     suspend fun profile(uid: String): VendorProfile?
     suspend fun saveProfile(uid: String, profile: VendorProfile)
-    /** Starts streaming the vendor's data; `onChange` receives the full picture after every change. */
-    fun observe(uid: String, onChange: (VendorData) -> Unit)
+    /**
+     * Starts streaming the vendor's data; `onChange` receives the full picture after every change.
+     * Suspending because the on-device implementation has to read and parse a file before the first emission.
+     */
+    suspend fun observe(uid: String, onChange: (VendorData) -> Unit)
     fun stopObserving()
     suspend fun write(uid: String, ops: List<WriteOp>)
     suspend fun deleteEverything(uid: String)
@@ -43,19 +46,28 @@ class LocalRepository(context: Context) : Repository {
     override suspend fun saveProfile(uid: String, profile: VendorProfile) = withContext(Dispatchers.IO) {
         File(dir(uid), "profile.json").writeText(toJson(Mapping.of(profile)).toString())
     }
-    override fun observe(uid: String, onChange: (VendorData) -> Unit) {
+    override suspend fun observe(uid: String, onChange: (VendorData) -> Unit) {
         this.onChange = onChange
-        docs.clear()
-        val f = File(dir(uid), "data.json")
-        if (f.exists()) {
-            val o = JSONObject(f.readText())
-            for (c in Coll.all) {
-                val arr = o.optJSONArray(c) ?: continue
-                val m = mutableMapOf<String, Doc>()
-                for (i in 0 until arr.length()) { val d = fromJson(arr.getJSONObject(i)); m[d["id"] as String] = d }
-                docs[c] = m
+        // Reading and parsing the document file is disk work; it must not run on the main thread.
+        val loaded = withContext(Dispatchers.IO) {
+            val parsed = mutableMapOf<String, MutableMap<String, Doc>>()
+            val f = File(dir(uid), "data.json")
+            if (f.exists()) {
+                val o = JSONObject(f.readText())
+                for (c in Coll.all) {
+                    val arr = o.optJSONArray(c) ?: continue
+                    val m = mutableMapOf<String, Doc>()
+                    for (i in 0 until arr.length()) {
+                        val d = fromJson(arr.getJSONObject(i))
+                        m[d["id"] as String] = d
+                    }
+                    parsed[c] = m
+                }
             }
+            parsed
         }
+        docs.clear()
+        docs.putAll(loaded)
         onChange(snapshot())
     }
     override fun stopObserving() { onChange = null }
@@ -115,7 +127,7 @@ class FirestoreRepository : Repository {
     }
     override suspend fun saveProfile(uid: String, profile: VendorProfile) { vendor(uid).set(Mapping.of(profile)).await() }
 
-    override fun observe(uid: String, onChange: (VendorData) -> Unit) {
+    override suspend fun observe(uid: String, onChange: (VendorData) -> Unit) {
         stopObserving(); docs.clear()
         for (c in Coll.all) {
             listeners += vendor(uid).collection(c).addSnapshotListener { snap, _ ->
