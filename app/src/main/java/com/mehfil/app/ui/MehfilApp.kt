@@ -6,21 +6,26 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.CreditCard
-import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,7 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -44,17 +52,54 @@ import androidx.navigation.navArgument
 import com.mehfil.app.model.AppStore
 import com.mehfil.app.ui.components.ToastView
 import com.mehfil.app.ui.screens.*
+import com.mehfil.app.ui.theme.Dim
 import com.mehfil.app.ui.theme.M
 import com.mehfil.app.ui.theme.Space
 import com.mehfil.app.ui.theme.Type
 import java.time.LocalDate
 
+/**
+ * The five tab destinations. Icons are the filled weight and deliberately mirror the iOS build's SF Symbols
+ * — house, calendar, creditcard, person.2, person — so the two apps read as one product. `People` is two
+ * figures, not `Groups`' three, because iOS uses `person.2`.
+ */
 enum class Tab(val route: String, val title: String, val icon: ImageVector) {
-    HOME("home", "Home", Icons.Outlined.Home),
-    EVENTS("events", "Events", Icons.Outlined.CalendarMonth),
-    MONEY("money", "Money", Icons.Outlined.CreditCard),
-    TEAM("team", "Team", Icons.Outlined.Groups),
-    PROFILE("profile", "Profile", Icons.Outlined.Person),
+    HOME("home", "Home", Icons.Filled.Home),
+    EVENTS("events", "Events", Icons.Filled.CalendarMonth),
+    MONEY("money", "Money", Icons.Filled.CreditCard),
+    TEAM("team", "Team", Icons.Filled.People),
+    PROFILE("profile", "Profile", Icons.Filled.Person),
+}
+
+/**
+ * The tab bar: a floating capsule that clears the content, matching the iOS build rather than Material's
+ * full-width bar. Rausch marks the selected tab through its icon and label (NOTES: Rausch is the single
+ * voltage); the pill behind it is neutral, so the accent is never doubled.
+ */
+@Composable
+private fun FloatingTabBar(selected: Tab, onSelect: (Tab) -> Unit) {
+    val m = M
+    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = Dim.gutter, vertical = Space.sm)) {
+        Surface(shape = CircleShape, color = m.surface, shadowElevation = 6.dp) {
+            Row(Modifier.fillMaxWidth().padding(Space.xs), verticalAlignment = Alignment.CenterVertically) {
+                Tab.entries.forEach { t ->
+                    val on = t == selected
+                    Column(
+                        Modifier.weight(1f)
+                            .clip(CircleShape)
+                            .background(if (on) m.segmentTrack else Color.Transparent)
+                            .selectable(selected = on, role = Role.Tab) { onSelect(t) }
+                            .padding(vertical = Space.sm),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(Space.xxs),
+                    ) {
+                        Icon(t.icon, null, Modifier.size(Dim.icon), tint = if (on) m.accent else m.text)
+                        Text(t.title, style = Type.microCap, color = if (on) m.accent else m.text, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** Route helpers: every pushed destination in the app (spec §2). */
@@ -125,23 +170,7 @@ fun MehfilApp(store: AppStore) {
         containerColor = m.ground,
         bottomBar = {
             // Pushed screens drop the tab bar (NOTES tab bar policy).
-            if (isRoot) {
-                androidx.compose.foundation.layout.Column {
-                    HorizontalDivider(thickness = 1.dp, color = m.line)
-                    NavigationBar(containerColor = m.surface, tonalElevation = 0.dp) {
-                        Tab.entries.forEach { t ->
-                            NavigationBarItem(
-                                selected = selected == t, onClick = { nav.tab(t) },
-                                icon = { Icon(t.icon, t.title) }, label = { Text(t.title, style = Type.microCap.copy(fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp))) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = m.accentText, selectedTextColor = m.accentText, indicatorColor = m.accentTint,
-                                    unselectedIconColor = m.textMute, unselectedTextColor = m.textMute,
-                                ),
-                            )
-                        }
-                    }
-                }
-            }
+            if (isRoot) FloatingTabBar(selected) { nav.tab(it) }
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().background(m.ground).padding(bottom = if (isRoot) padding.calculateBottomPadding() else 0.dp)) {
