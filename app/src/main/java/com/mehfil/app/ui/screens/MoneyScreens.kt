@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -163,8 +164,8 @@ fun RecordPaymentSheet(store: AppStore, milestone: Milestone, onDone: () -> Unit
     val m = M
     var amount by remember { mutableStateOf(milestone.amount) }
     var method by remember { mutableStateOf(PaymentMethod.UPI) }
-    var date by remember { mutableStateOf(Cal.todayDate) }
-    var reference by remember { mutableStateOf("") }
+    var date by rememberSaveableDate { Cal.todayDate }
+    var reference by rememberSaveable { mutableStateOf("") }
     var showReference by remember { mutableStateOf(false) }
     var showDate by remember { mutableStateOf(false) }
     val e = store.event(milestone.eventId)

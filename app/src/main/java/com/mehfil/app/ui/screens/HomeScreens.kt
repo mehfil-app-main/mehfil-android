@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,7 +106,7 @@ fun HomeScreen(store: AppStore, nav: Nav) {
 /** A2 · Calendar month — see the shape of the month. */
 @Composable
 fun CalendarMonthScreen(store: AppStore, nav: Nav) {
-    var month by remember { mutableStateOf(YearMonth.from(Cal.todayDate)) }
+    var month by rememberSaveableMonth { YearMonth.from(Cal.todayDate) }
     var selected by remember { mutableStateOf(store.eventsOn(Cal.nextSaturday).firstOrNull()?.day?.takeIf { YearMonth.from(it) == YearMonth.from(Cal.todayDate) } ?: Cal.todayDate) }
     val monthEvents = store.eventsInMonth(month.monthValue, month.year)
     val byDay = monthEvents.groupBy { it.day.dayOfMonth }

@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,7 +62,7 @@ import java.time.LocalDate
 @Composable
 fun CrewListScreen(store: AppStore, nav: Nav, pushed: Boolean) {
     val m = M
-    var day by remember { mutableStateOf(Cal.todayDate) }
+    var day by rememberSaveableDate { Cal.todayDate }
     val dayIds = store.eventsOn(day).map { it.id }
     fun booked(c: CrewMember) = c.bookings.filter { it in dayIds }.mapNotNull { store.event(it) }
     val conflictDays = store.events.filter { store.isConflicted(it) }.map { it.day }.toSet()
@@ -220,7 +221,7 @@ fun AttendanceScreen(store: AppStore, nav: Nav, initialEventId: String) {
     val m = M
     val e0 = store.event(initialEventId) ?: return
     val todays = store.eventsOn(e0.day)
-    var eventId by remember { mutableStateOf(initialEventId) }
+    var eventId by rememberSaveable { mutableStateOf(initialEventId) }
     val e = store.event(eventId) ?: e0
     val members = store.assignedCrew(e.id); val states = store.attendanceFor(e.id)
     val arrived = members.count { states[it.id] == AttendanceState.ARRIVED }
@@ -262,7 +263,7 @@ fun AttendanceScreen(store: AppStore, nav: Nav, initialEventId: String) {
 @Composable
 fun InventoryScreen(store: AppStore, nav: Nav) {
     val m = M
-    var day by remember { mutableStateOf(Cal.todayDate) }
+    var day by rememberSaveableDate { Cal.todayDate }
     var addSheet by remember { mutableStateOf(false) }
     val conflictDays = store.inventory.flatMap { item -> item.holds.map { it.date }.filter { item.isOver(it) } }.toSet()
     val items = store.inventory.sortedWith(compareByDescending<InventoryItem> { it.isOver(day) }.thenByDescending { it.committed(day).toFloat() / maxOf(1, it.total) })

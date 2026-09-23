@@ -49,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -170,7 +171,7 @@ fun PackagesScreen(store: AppStore, nav: Nav) {
 @Composable
 fun ClientListScreen(store: AppStore, nav: Nav) {
     val m = M
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     var editing by remember { mutableStateOf<Client?>(null) }
     val list = store.clients.filter { query.isBlank() || it.name.contains(query, true) || it.phone.contains(query) }.sortedByDescending { store.stats(it).lifetimeValue }
     val lifetime = store.lifetimeValue
