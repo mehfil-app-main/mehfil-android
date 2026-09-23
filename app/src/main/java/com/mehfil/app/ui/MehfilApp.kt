@@ -33,6 +33,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavBackStackEntry
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -70,6 +72,29 @@ object Routes {
     fun attendance(id: String) = "attendance/$id"
     fun item(id: String) = "item/$id"
     fun shared(id: String) = "shared/$id"
+}
+
+private const val ARG_ID = "id"
+private const val ARG_DATE = "date"
+private const val NEW_ENQUIRY = "new"
+
+/**
+ * Renders [content] with the route's id, or pops back if the argument is missing.
+ *
+ * Compose Navigation types arguments as a Bundle, so every id-bearing route previously ended in `!!`. A route
+ * typo or a malformed deep link would have crashed rather than returning the user to a screen that exists.
+ */
+@Composable
+private fun NavBackStackEntry.id(nav: Nav, content: @Composable (String) -> Unit) {
+    val value = arguments?.getString(ARG_ID)
+    if (value.isNullOrEmpty()) LaunchedEffect(Unit) { nav.back() } else content(value)
+}
+
+/** As [id], but for the day route: an unparseable date sends the user back rather than throwing. */
+@Composable
+private fun NavBackStackEntry.date(nav: Nav, content: @Composable (LocalDate) -> Unit) {
+    val value = arguments?.getString(ARG_DATE)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+    if (value == null) LaunchedEffect(Unit) { nav.back() } else content(value)
 }
 
 class Nav(val controller: NavHostController, val store: AppStore, private val select: (Tab) -> Unit) {
@@ -128,21 +153,26 @@ fun MehfilApp(store: AppStore) {
                 composable(Tab.PROFILE.route) { ProfileScreen(store, nav) }
 
                 composable(Routes.calendar) { CalendarMonthScreen(store, nav) }
-                composable("day/{date}", listOf(navArgument("date") { type = NavType.StringType })) { DayDetailScreen(store, nav, LocalDate.parse(it.arguments!!.getString("date"))) }
+                composable("day/{$ARG_DATE}", listOf(navArgument(ARG_DATE) { type = NavType.StringType })) { entry ->
+                    entry.date(nav) { DayDetailScreen(store, nav, it) }
+                }
                 composable(Routes.season) { SeasonSummaryScreen(store, nav) }
-                composable("event/{id}") { EventDetailScreen(store, nav, it.arguments!!.getString("id")!!) }
+                composable("event/{$ARG_ID}") { entry -> entry.id(nav) { EventDetailScreen(store, nav, it) } }
                 composable(Routes.create) { CreateEventScreen(store, nav) }
-                composable("runsheet/{id}") { RunsheetScreen(store, nav, it.arguments!!.getString("id")!!) }
-                composable("change/{id}") { ChangeRequestScreen(store, nav, it.arguments!!.getString("id")!!) }
-                composable("schedule/{id}") { PaymentScheduleScreen(store, nav, it.arguments!!.getString("id")!!) }
-                composable("expenses/{id}") { ExpensesScreen(store, nav, it.arguments!!.getString("id")!!) }
-                composable("assign/{id}") { AssignCrewScreen(store, nav, it.arguments!!.getString("id")!!) }
-                composable("attendance/{id}") { AttendanceScreen(store, nav, it.arguments!!.getString("id")!!) }
+                composable("runsheet/{$ARG_ID}") { entry -> entry.id(nav) { RunsheetScreen(store, nav, it) } }
+                composable("change/{$ARG_ID}") { entry -> entry.id(nav) { ChangeRequestScreen(store, nav, it) } }
+                composable("schedule/{$ARG_ID}") { entry -> entry.id(nav) { PaymentScheduleScreen(store, nav, it) } }
+                composable("expenses/{$ARG_ID}") { entry -> entry.id(nav) { ExpensesScreen(store, nav, it) } }
+                composable("assign/{$ARG_ID}") { entry -> entry.id(nav) { AssignCrewScreen(store, nav, it) } }
+                composable("attendance/{$ARG_ID}") { entry -> entry.id(nav) { AttendanceScreen(store, nav, it) } }
                 composable(Routes.inventory) { InventoryScreen(store, nav) }
-                composable("item/{id}") { ItemDetailScreen(store, nav, it.arguments!!.getString("id")!!) }
+                composable("item/{$ARG_ID}") { entry -> entry.id(nav) { ItemDetailScreen(store, nav, it) } }
                 composable(Routes.clients) { ClientListScreen(store, nav) }
-                composable("shared/{id}") { SharedEventPageScreen(store, nav, it.arguments!!.getString("id")!!) }
-                composable("enquiry/{id}") { EnquiryIntakeScreen(store, nav, it.arguments!!.getString("id")!!.takeIf { id -> id != "new" }) }
+                composable("shared/{$ARG_ID}") { entry -> entry.id(nav) { SharedEventPageScreen(store, nav, it) } }
+                composable("enquiry/{$ARG_ID}") { entry ->
+                    // "new" is the sentinel for an unsaved enquiry; the screen takes null for that case.
+                    entry.id(nav) { EnquiryIntakeScreen(store, nav, it.takeIf { id -> id != NEW_ENQUIRY }) }
+                }
                 composable(Routes.crew) { CrewListScreen(store, nav, pushed = true) }
                 composable(Routes.packages) { PackagesScreen(store, nav) }
                 composable(Routes.account) { AccountScreen(store, nav) }
