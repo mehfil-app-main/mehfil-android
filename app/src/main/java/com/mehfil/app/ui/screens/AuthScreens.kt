@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -127,7 +129,7 @@ fun WelcomeScreen(store: AppStore) {
                     Text("This build has no cloud configuration, so your data stays on this device. See backend/README.md to enable Google, Apple and email sign-in.",
                         style = Type.caption, color = m.textMute, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 }
-                if (error != null) Text(error!!, style = Type.caption, color = m.danger, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                error?.let { Text(it, style = Type.caption, color = m.danger, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
                 Row(Modifier.fillMaxWidth().padding(top = Space.xs), horizontalArrangement = Arrangement.Center) {
                     Text("By continuing you agree to the ", style = Type.caption, color = m.textMute)
                     Text("Terms", style = Type.caption, color = m.accentText, modifier = Modifier.clickable { uri.openUri(TERMS_URL) })
@@ -191,7 +193,7 @@ fun EmailAuthSheet(store: AppStore, onDismiss: () -> Unit) {
     val canSubmit = emailOk && when (mode) {
         "reset" -> true
         "signIn" -> password.isNotEmpty()
-        else -> name.isNotBlank() && AuthService.passwordProblem(password) == null && password == confirm
+        else -> name.isNotBlank() && auth.passwordProblem(password) == null && password == confirm
     }
     val title = when (mode) { "signUp" -> "Create your account"; "reset" -> "Reset your password"; else -> "Sign in" }
     val subtitle = when (mode) {
@@ -223,11 +225,11 @@ fun EmailAuthSheet(store: AppStore, onDismiss: () -> Unit) {
             InputField("Email", email, { email = it.trim() }, placeholder = "you@example.com", keyboard = KeyboardType.Email)
             if (mode != "reset") InputField("Password", password, { password = it },
                 placeholder = if (mode == "signUp") "At least 8 characters" else "Your password",
-                helper = if (mode == "signUp") AuthService.passwordProblem(password) else null, password = true)
+                helper = if (mode == "signUp") auth.passwordProblem(password) else null, password = true)
             if (mode == "signUp") InputField("Confirm password", confirm, { confirm = it }, placeholder = "Type it again",
-                helper = if (confirm.isNotEmpty() && confirm != password) "The two passwords don't match." else null, password = true)
-            if (notice != null) Text(notice!!, style = Type.caption, color = m.text)
-            if (error != null) Text(error!!, style = Type.caption, color = m.danger)
+                helper = if (confirm.isNotEmpty() && confirm != password) stringResource(R.string.password_mismatch) else null, password = true)
+            notice?.let { Text(it, style = Type.caption, color = m.text) }
+            error?.let { Text(it, style = Type.caption, color = m.danger) }
             Row(Modifier.fillMaxWidth().padding(top = Space.xs)) {
                 when (mode) {
                     "signIn" -> {
@@ -264,7 +266,7 @@ fun VerifyEmailScreen(store: AppStore, account: Account) {
                 Text("Confirm your email", style = Type.displayMd, color = m.text)
                 Text("We sent a link to ${account.email ?: "your inbox"}. Open it, then tap I've confirmed.", style = Type.bodyMd, color = m.textMute)
             }
-            if (error != null) Text(error!!, style = Type.caption, color = m.danger)
+            error?.let { Text(it, style = Type.caption, color = m.danger) }
             if (sent) Text("Sent again. It can take a minute — check spam too.", style = Type.caption, color = m.text)
             Spacer(Modifier.weight(1f))
             Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -287,10 +289,10 @@ fun VerifyEmailScreen(store: AppStore, account: Account) {
 fun OnboardingScreen(store: AppStore, account: Account) {
     val m = M
     val scope = rememberCoroutineScope()
-    var owner by remember { mutableStateOf(account.name ?: "") }
-    var business by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var area by remember { mutableStateOf("") }
+    var owner by rememberSaveable { mutableStateOf(account.name ?: "") }
+    var business by rememberSaveable { mutableStateOf("") }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var area by rememberSaveable { mutableStateOf("") }
     var loadSample by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     Screen(
@@ -364,7 +366,7 @@ fun AccountScreen(store: AppStore, nav: Nav) {
             Column(Modifier.padding(top = Space.md), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 MButton("Sign out", { scope.launch { auth.signOut() } }, kind = ButtonKind.SECONDARY)
                 MButton("Delete account", { deletePassword = ""; confirmDelete = true }, kind = ButtonKind.DESTRUCTIVE)
-                if (error != null) Text(error!!, style = Type.caption, color = m.danger, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                error?.let { Text(it, style = Type.caption, color = m.danger, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
             }
             Text("Deleting removes your account and every event, client, crew member and payment record. It cannot be undone.", style = Type.caption, color = m.textMute)
             Row(horizontalArrangement = Arrangement.spacedBy(Space.lg)) {
@@ -410,7 +412,7 @@ fun ChangePasswordSheet(store: AppStore, onDismiss: () -> Unit) {
     var confirm by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val canSubmit = current.isNotEmpty() && AuthService.passwordProblem(new) == null && new == confirm
+    val canSubmit = current.isNotEmpty() && auth.passwordProblem(new) == null && new == confirm
     EditSheet(onDismiss) {
         SheetContent("Change password", "You'll stay signed in on this device.", actions = {
             MButton("Save password", {
@@ -419,10 +421,10 @@ fun ChangePasswordSheet(store: AppStore, onDismiss: () -> Unit) {
             }, enabled = canSubmit, loading = busy)
         }) {
             InputField("Current password", current, { current = it }, password = true)
-            InputField("New password", new, { new = it }, placeholder = "At least 8 characters", helper = AuthService.passwordProblem(new), password = true)
+            InputField("New password", new, { new = it }, placeholder = "At least 8 characters", helper = auth.passwordProblem(new), password = true)
             InputField("Confirm new password", confirm, { confirm = it }, placeholder = "Type it again",
-                helper = if (confirm.isNotEmpty() && confirm != new) "The two passwords don't match." else null, password = true)
-            if (error != null) Text(error!!, style = Type.caption, color = m.danger)
+                helper = if (confirm.isNotEmpty() && confirm != new) stringResource(R.string.password_mismatch) else null, password = true)
+            error?.let { Text(it, style = Type.caption, color = m.danger) }
         }
     }
 }

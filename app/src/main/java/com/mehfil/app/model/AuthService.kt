@@ -24,6 +24,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.OAuthProvider
 import com.google.firebase.auth.userProfileChangeRequest
 import com.mehfil.app.BuildConfig
+import com.mehfil.app.R
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -44,7 +45,8 @@ data class Account(
     }
 }
 
-class AuthCancelled : Exception("Sign-in was cancelled.")
+/** Thrown when the user backs out of a provider sheet; callers swallow it rather than showing an error. */
+class AuthCancelled : Exception("Sign-in cancelled by user")
 
 /** Firebase Auth when the build has a config; otherwise a single on-device account so the app still works. */
 class AuthService(private val context: Context) {
@@ -77,14 +79,16 @@ class AuthService(private val context: Context) {
 
     // ---- Email and password ----
 
+    /** Minimum we accept: 8 characters with at least one letter and one digit. */
+    fun passwordProblem(password: String): String? = when {
+        password.length < MIN_PASSWORD_LENGTH -> context.getString(R.string.password_too_short)
+        password.none { it.isLetter() } -> context.getString(R.string.password_needs_letter)
+        password.none { it.isDigit() } -> context.getString(R.string.password_needs_number)
+        else -> null
+    }
+
     companion object {
-        /** Minimum we accept: 8 characters with at least one letter and one digit. */
-        fun passwordProblem(password: String): String? = when {
-            password.length < 8 -> "Use at least 8 characters."
-            password.none { it.isLetter() } -> "Include at least one letter."
-            password.none { it.isDigit() } -> "Include at least one number."
-            else -> null
-        }
+        const val MIN_PASSWORD_LENGTH = 8
 
         fun isValidEmail(email: String): Boolean {
             val t = email.trim()
@@ -97,22 +101,22 @@ class AuthService(private val context: Context) {
 
     /** Creates the account, stores the owner's name on it and sends the verification email. */
     suspend fun signUp(email: String, password: String, name: String) {
-        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
-        val user = auth.createUserWithEmailAndPassword(email.trim(), password).await().user!!
+        val auth = auth ?: error(context.getString(R.string.auth_not_configured))
+        val user = requireNotNull(auth.createUserWithEmailAndPassword(email.trim(), password).await().user) { "Firebase returned no user after sign-up" }
         if (name.isNotBlank()) runCatching { user.updateProfile(userProfileChangeRequest { displayName = name.trim() }).await() }
         runCatching { user.sendEmailVerification().await() }
         state = State.SignedIn(account(user))
     }
 
     suspend fun signIn(email: String, password: String) {
-        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
-        val user = auth.signInWithEmailAndPassword(email.trim(), password).await().user!!
+        val auth = auth ?: error(context.getString(R.string.auth_not_configured))
+        val user = requireNotNull(auth.signInWithEmailAndPassword(email.trim(), password).await().user) { "Firebase returned no user after sign-in" }
         state = State.SignedIn(account(user))
     }
 
     /** Sends (or resends) the verification email for the signed-in account. */
     suspend fun sendVerificationEmail() {
-        val user = auth?.currentUser ?: error("You're not signed in.")
+        val user = auth?.currentUser ?: error(context.getString(R.string.auth_not_signed_in))
         user.sendEmailVerification().await()
     }
 
@@ -126,51 +130,50 @@ class AuthService(private val context: Context) {
     }
 
     suspend fun sendPasswordReset(email: String) {
-        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
+        val auth = auth ?: error(context.getString(R.string.auth_not_configured))
         auth.sendPasswordResetEmail(email.trim()).await()
     }
 
     /** Changes the password after confirming the current one. */
     suspend fun changePassword(current: String, new: String) {
-        val user = auth?.currentUser ?: error("You're not signed in.")
-        val email = user.email ?: error("This account has no email address.")
+        val user = auth?.currentUser ?: error(context.getString(R.string.auth_not_signed_in))
+        val email = user.email ?: error(context.getString(R.string.auth_not_signed_in))
         user.reauthenticate(EmailAuthProvider.getCredential(email, current)).await()
         user.updatePassword(new).await()
     }
 
     /** Firebase's auth errors in plain words. */
+    /** Firebase's auth errors in words a vendor can act on. Codes are documented at firebase.google.com/docs/reference/kotlin/com/google/firebase/auth/FirebaseAuthException. */
     fun message(e: Throwable): String {
         val code = (e as? FirebaseAuthException)?.errorCode
-        return when {
-            code == "ERROR_INVALID_EMAIL" -> "That doesn't look like an email address."
-            code == "ERROR_EMAIL_ALREADY_IN_USE" -> "An account already exists for this email. Sign in instead."
-            code == "ERROR_WEAK_PASSWORD" || e is FirebaseAuthWeakPasswordException -> "That password is too easy to guess. Use at least 8 characters with a letter and a number."
-            code == "ERROR_WRONG_PASSWORD" || code == "ERROR_INVALID_CREDENTIAL" -> "Wrong email or password."
-            code == "ERROR_USER_NOT_FOUND" -> "No account for that email. Create one first."
-            code == "ERROR_USER_DISABLED" -> "This account has been disabled."
-            code == "ERROR_TOO_MANY_REQUESTS" -> "Too many attempts. Wait a few minutes and try again."
-            code == "ERROR_REQUIRES_RECENT_LOGIN" -> "Please sign in again before making this change."
-            code == "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" -> "This email is already used by another sign-in method. Use that one instead."
-            e is FirebaseAuthInvalidUserException -> "No account for that email. Create one first."
-            e is FirebaseAuthInvalidCredentialsException -> "Wrong email or password."
-            e is FirebaseAuthUserCollisionException -> "An account already exists for this email. Sign in instead."
-            (e.message ?: "").contains("network", true) -> "No connection. Check your internet and try again."
-            else -> e.message ?: "Something went wrong."
+        val id = when {
+            code == "ERROR_INVALID_EMAIL" -> R.string.auth_email_invalid
+            code == "ERROR_EMAIL_ALREADY_IN_USE" || e is FirebaseAuthUserCollisionException -> R.string.auth_email_in_use
+            code == "ERROR_WEAK_PASSWORD" || e is FirebaseAuthWeakPasswordException -> R.string.auth_password_weak
+            code == "ERROR_WRONG_PASSWORD" || code == "ERROR_INVALID_CREDENTIAL" || e is FirebaseAuthInvalidCredentialsException -> R.string.auth_credentials_wrong
+            code == "ERROR_USER_NOT_FOUND" || e is FirebaseAuthInvalidUserException -> R.string.auth_user_not_found
+            code == "ERROR_USER_DISABLED" -> R.string.auth_user_disabled
+            code == "ERROR_TOO_MANY_REQUESTS" -> R.string.auth_too_many_requests
+            code == "ERROR_REQUIRES_RECENT_LOGIN" -> R.string.auth_requires_recent_login
+            code == "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" -> R.string.auth_other_provider
+            (e.message ?: "").contains("network", ignoreCase = true) -> R.string.auth_no_connection
+            else -> R.string.error_sign_in_failed
         }
+        return context.getString(id)
     }
 
     // ---- Google ----
 
     /** Google via Credential Manager: the Web client id comes from google-services.json (default_web_client_id). */
     suspend fun signInWithGoogle(activity: Activity) {
-        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
+        val auth = auth ?: error(context.getString(R.string.auth_not_configured))
         val credential = googleCredential(activity)
         auth.signInWithCredential(GoogleAuthProvider.getCredential(credential.idToken, null)).await()
     }
 
     /** Sign in with Apple on Android uses Firebase's web OAuth flow (Services ID configured in the console). */
     suspend fun signInWithApple(activity: Activity) {
-        val auth = auth ?: error("Cloud sign-in is not configured in this build.")
+        val auth = auth ?: error(context.getString(R.string.auth_not_configured))
         val provider = OAuthProvider.newBuilder("apple.com").setScopes(listOf("email", "name")).build()
         val pending = auth.pendingAuthResult
         if (pending != null) { pending.await(); return }
@@ -195,8 +198,8 @@ class AuthService(private val context: Context) {
             "google.com" -> { val c = googleCredential(activity); user.reauthenticate(GoogleAuthProvider.getCredential(c.idToken, null)).await() }
             "apple.com" -> { val provider = OAuthProvider.newBuilder("apple.com").build(); user.startActivityForReauthenticateWithProvider(activity, provider).await() }
             "password" -> {
-                val email = user.email ?: error("This account has no email address.")
-                user.reauthenticate(EmailAuthProvider.getCredential(email, password ?: error("Enter your password to confirm."))).await()
+                val email = user.email ?: error(context.getString(R.string.auth_not_signed_in))
+                user.reauthenticate(EmailAuthProvider.getCredential(email, password ?: error(context.getString(R.string.auth_not_signed_in)))).await()
             }
         }
         user.delete().await()
@@ -210,6 +213,6 @@ class AuthService(private val context: Context) {
         val result = try { CredentialManager.create(activity).getCredential(activity, request) } catch (e: GetCredentialCancellationException) { throw AuthCancelled() }
         val cred = result.credential
         if (cred is CustomCredential && cred.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) return GoogleIdTokenCredential.createFrom(cred.data)
-        error("Google did not return an ID token.")
+        error(context.getString(R.string.auth_no_id_token))
     }
 }
