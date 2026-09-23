@@ -55,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,9 +86,9 @@ enum class EventSegment(val label: String) { UPCOMING("Upcoming"), ENQUIRY("Enqu
 /** B1 · Event list — segmented, grouped under month headers, floating create action. */
 @Composable
 fun EventListScreen(store: AppStore, nav: Nav) {
-    var segment by remember { mutableStateOf(EventSegment.UPCOMING) }
+    var segment by rememberSaveable { mutableStateOf(EventSegment.UPCOMING) }
     var searching by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     fun matches(e: Event) = query.isBlank() || e.name.contains(query, true) || e.venue.short.contains(query, true) || store.clientFor(e)?.name?.contains(query, true) == true
     val upcoming = store.upcomingEvents.filter(::matches)
     val completed = store.completedEvents.filter(::matches)
@@ -223,7 +224,7 @@ fun EventDetailScreen(store: AppStore, nav: Nav, eventId: String) {
                 }
             }
             Hairline()
-            SectionRow(Icons.Outlined.Groups, "Crew", "${e.crewAssigned} of ${e.crewNeeded} · ${store.crewConflictNote(e) ?: "assigned"}") { nav.push(Routes.assign(e.id)) }
+            SectionRow(Icons.Outlined.Groups, "Crew", "${e.crewAssigned} of ${e.crewNeeded} · ${store.conflictedMember(e)?.let { "${it.firstName}'s team conflicted" } ?: "assigned"}") { nav.push(Routes.assign(e.id)) }
             Hairline()
             SectionRow(Icons.Outlined.Inventory2, "Inventory", store.inventorySummary(e)) { holds = true }
             Hairline()

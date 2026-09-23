@@ -61,7 +61,15 @@ data class Milestone(
 ) {
     val isOpen get() = status != MilestoneStatus.PAID
     /** Overdue is a fact about the date, not a stored flag. */
-    val effectiveStatus get() = if (status == MilestoneStatus.PENDING && due < Cal.todayDate) MilestoneStatus.OVERDUE else status
+    /**
+     * Overdue is derived, never stored, so a milestone cannot go stale. Takes the date to compare against:
+     * reading the clock in here made the rule impossible to pin in a test and let one frame disagree with
+     * the next across midnight. [VendorView] passes its own `today` so a whole screen is consistent.
+     */
+    fun effectiveStatusOn(today: LocalDate) =
+        if (status == MilestoneStatus.PENDING && due < today) MilestoneStatus.OVERDUE else status
+
+    val effectiveStatus get() = effectiveStatusOn(Cal.todayDate)
 }
 
 enum class ReminderTone(val label: String) { GENTLE("Gentle"), STANDARD("Standard"), FIRM("Firm"); val code get() = name.lowercase() }

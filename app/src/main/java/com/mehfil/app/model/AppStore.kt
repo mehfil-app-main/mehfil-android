@@ -2,12 +2,22 @@ package com.mehfil.app.model
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
+import androidx.annotation.StringRes
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mehfil.app.BuildConfig
+import com.mehfil.app.R
+import com.mehfil.app.domain.ChangeRequestPricing
+import com.mehfil.app.domain.ClientStats
+import com.mehfil.app.domain.ReminderComposer
+import com.mehfil.app.domain.EventDefaults
+import com.mehfil.app.domain.SeasonSummary
+import com.mehfil.app.domain.VendorView
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -20,7 +30,8 @@ data class Toast(val id: String, val kind: Kind, val message: String) { enum cla
 class AppStore(app: Application) : AndroidViewModel(app) {
     val auth = AuthService(app)
     val repo: Repository = if (BuildConfig.HAS_FIREBASE_CONFIG) FirestoreRepository() else LocalRepository(app)
-    private val prefs = app.getSharedPreferences("mehfil", Context.MODE_PRIVATE)
+    private val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val reminders = ReminderComposer(app)
 
     var uid by mutableStateOf<String?>(null); private set
     var vendor by mutableStateOf<VendorProfile?>(null); private set
@@ -40,7 +51,7 @@ class AppStore(app: Application) : AndroidViewModel(app) {
         if (uid == newUid) return
         uid = newUid; profileChecked = false; loaded = false; vendor = null; data = VendorData()
         viewModelScope.launch {
-            try { vendor = repo.profile(newUid) } catch (e: Exception) { show(Toast.Kind.ERROR, "Couldn't load your profile: ${e.message}") }
+            try { vendor = repo.profile(newUid) } catch (e: Exception) { report(e, R.string.error_load_profile) }
             profileChecked = true
             repo.observe(newUid) { snapshot -> data = snapshot; loaded = true }
         }
@@ -57,11 +68,11 @@ class AppStore(app: Application) : AndroidViewModel(app) {
                 repo.write(id, Mapping.writes(SampleSeason.data()))
             } else repo.write(id, SampleSeason.defaultPackages().map { WriteOp.Set(Coll.packages, it.id, Mapping.of(it)) })
             repo.saveProfile(id, p); vendor = p
-        } catch (e: Exception) { show(Toast.Kind.ERROR, "Couldn't save your profile: ${e.message}") }
+        } catch (e: Exception) { report(e, R.string.error_save_profile) }
     }
     fun updateProfile(change: (VendorProfile) -> VendorProfile) {
         val id = uid ?: return; val p = change(vendor ?: return); vendor = p
-        viewModelScope.launch { try { repo.saveProfile(id, p) } catch (e: Exception) { show(Toast.Kind.ERROR, "Couldn't save: ${e.message}") } }
+        viewModelScope.launch { try { repo.saveProfile(id, p) } catch (e: Exception) { report(e, R.string.error_save) } }
     }
     /**
      * Deletes exactly the records the sample season wrote. Its ids are fixed ("kapoor", "kapoor-sangeet", …),
@@ -71,18 +82,24 @@ class AppStore(app: Application) : AndroidViewModel(app) {
         val id = uid ?: return
         try {
             repo.write(id, Mapping.writes(SampleSeason.data()).map { WriteOp.Delete(it.collection, it.id) })
-            show(Toast.Kind.SUCCESS, "Sample season removed")
-        } catch (e: Exception) { show(Toast.Kind.ERROR, "Couldn't remove it: ${e.message}") }
+            show(Toast.Kind.SUCCESS, string(R.string.sample_removed))
+        } catch (e: Exception) { report(e, R.string.error_remove_sample) }
     }
 
-    suspend fun loadSampleSeason() { val id = uid ?: return; try { repo.write(id, Mapping.writes(SampleSeason.data())); show(Toast.Kind.SUCCESS, "Sample season loaded") } catch (e: Exception) { show(Toast.Kind.ERROR, "Couldn't load the sample: ${e.message}") } }
+    suspend fun loadSampleSeason() {
+        val id = uid ?: return
+        try {
+            repo.write(id, Mapping.writes(SampleSeason.data()))
+            show(Toast.Kind.SUCCESS, string(R.string.sample_loaded))
+        } catch (e: Exception) { report(e, R.string.error_load_sample) }
+    }
     suspend fun eraseAllData() { val id = uid ?: return; repo.deleteEverything(id) }
 
     private fun save(ops: List<WriteOp>, success: String? = null) {
         val id = uid ?: return
         viewModelScope.launch {
             try { repo.write(id, ops); if (success != null) show(Toast.Kind.SUCCESS, success) }
-            catch (e: Exception) { show(Toast.Kind.ERROR, "Couldn't save: ${e.message}") }
+            catch (e: Exception) { report(e, R.string.error_save) }
         }
     }
     private fun save(op: WriteOp, success: String? = null) = save(listOf(op), success)
@@ -101,82 +118,116 @@ class AppStore(app: Application) : AndroidViewModel(app) {
         .putStringSet("d.packages", draft.packageIds).putInt("d.quoted", draft.quoted).putString("d.enquiry", draft.fromEnquiryId).apply()
 
     private var toastJob: Job? = null
+
     fun show(kind: Toast.Kind, message: String) {
-        val t = Toast(Cal.newId(), kind, message); toast = t
-        toastJob?.cancel(); toastJob = viewModelScope.launch { delay(2800); if (toast?.id == t.id) toast = null }
+        val t = Toast(Cal.newId(), kind, message)
+        toast = t
+        toastJob?.cancel()
+        toastJob = viewModelScope.launch {
+            delay(TOAST_MILLIS)
+            if (toast?.id == t.id) toast = null
+        }
     }
 
-    // MARK: Collections
+    /**
+     * Firestore snapshot listeners outlive the ViewModel unless they are removed, which keeps the callback —
+     * and through it this store — reachable after the Activity is finished.
+     */
+    override fun onCleared() {
+        repo.stopObserving()
+        super.onCleared()
+    }
 
-    val events get() = data.events
-    val clients get() = data.clients
-    val milestones get() = data.milestones
-    val crew get() = data.crew.sortedWith(compareBy({ it.role.ordinal }, { it.name }))
-    val inventory get() = data.inventory
-    val tasks get() = data.tasks.sortedBy { it.order }
-    val reminders get() = data.reminders
-    val expenses get() = data.expenses
-    val enquiries get() = data.enquiries.sortedByDescending { it.createdAt }
-    val packages get() = data.packages
-    val changeRequests get() = data.changeRequests
+    private companion object {
+        const val TOAST_MILLIS = 2_800L
+        /** Bundled avatar images, cycled so consecutive clients look different. */
+        const val AVATAR_COUNT = 8
+        const val TAG = "AppStore"
+        const val PREFS_NAME = "mehfil"
+    }
 
-    fun event(id: String) = events.firstOrNull { it.id == id }
-    fun client(id: String) = clients.firstOrNull { it.id == id }
-    fun clientFor(e: Event) = client(e.clientId)
-    fun member(id: String) = crew.firstOrNull { it.id == id }
-    fun item(id: String) = inventory.firstOrNull { it.id == id }
-    fun enquiry(id: String) = enquiries.firstOrNull { it.id == id }
-    fun milestonesFor(eventId: String) = milestones.filter { it.eventId == eventId }.sortedBy { it.due }
-    fun expensesFor(eventId: String) = expenses.filter { it.eventId == eventId }
-    fun remindersFor(milestoneId: String) = reminders.filter { it.milestoneId == milestoneId }.sortedBy { it.sentAt }
-    fun pendingChangeRequest(eventId: String) = changeRequests.firstOrNull { it.eventId == eventId && it.status == ChangeRequestStatus.PENDING }
-    fun changeRequest(id: String) = changeRequests.firstOrNull { it.id == id }
+    /**
+     * Shows a message the user can act on and logs the detail. Exception text is deliberately not surfaced:
+     * it is untranslatable and exposes storage internals.
+     */
+    private fun report(t: Throwable, @StringRes fallback: Int) {
+        val error = AppError.from(t)
+        Log.w(TAG, "Operation failed: ${error::class.simpleName}", t)
+        show(
+            Toast.Kind.ERROR,
+            when (error) {
+                is AppError.Offline -> string(R.string.error_offline)
+                is AppError.NotAllowed -> string(R.string.error_not_allowed)
+                is AppError.Unexpected -> string(fallback)
+            },
+        )
+    }
 
-    val upcomingEvents get() = events.filter { it.status == EventStatus.UPCOMING }.sortedBy { it.start }
-    val completedEvents get() = events.filter { it.status == EventStatus.COMPLETED }.sortedByDescending { it.start }
-    val openEnquiries get() = enquiries.filter { it.status == EnquiryStatus.OPEN }
-    fun eventsOn(day: LocalDate) = events.filter { it.day == day && it.status != EventStatus.CANCELLED }.sortedBy { it.start }
-    fun eventsInMonth(month: Int, year: Int) = events.filter { it.status != EventStatus.CANCELLED && it.start.monthValue == month && it.start.year == year }.sortedBy { it.start }
-    fun conflictsOn(day: LocalDate): List<Event> { val list = eventsOn(day); return list.filter { e -> list.any { it.id != e.id && it.start < e.end && e.start < it.end } } }
-    private fun overlap(a: Event, b: Event) = a.id != b.id && a.start < b.end && b.start < a.end
+    private fun string(@StringRes id: Int): String = getApplication<Application>().getString(id)
 
-    /** A crew conflict is a fact about bookings: someone is booked on two events that overlap in time. */
-    fun isConflicted(e: Event): Boolean = e.status == EventStatus.UPCOMING &&
-        crew.any { m -> e.id in m.bookings && m.bookings.any { other -> event(other)?.let { overlap(e, it) } == true } }
-    /** The first double-booking in the season: (event, other event, member). */
-    val seasonConflict: Triple<Event, Event, CrewMember>?
-        get() {
-            for (m in crew) {
-                val booked = m.bookings.mapNotNull { event(it) }.filter { it.status == EventStatus.UPCOMING && it.day >= Cal.todayDate }.sortedBy { it.start }
-                for (a in booked) booked.firstOrNull { overlap(a, it) }?.let { return Triple(a, it, m) }
-            }
-            return null
-        }
-    fun crewOnDuty(day: LocalDate): Int { val ids = eventsOn(day).map { it.id }.toSet(); return crew.count { m -> m.bookings.any { it in ids } } }
+    /**
+     * The read model. `derivedStateOf` means the orderings, indices and money buckets are rebuilt when [data]
+     * changes and not on every recomposition — the screens read several of these per frame.
+     */
+    private val viewState = derivedStateOf { VendorView(data, Cal.todayDate) }
+    private val view: VendorView get() = viewState.value
+
+    // Collections and lookups. Thin delegation on purpose: the rules live in VendorView, which is pure Kotlin
+    // and unit-tested, while this class stays responsible for session, persistence and user feedback.
+
+    val events get() = view.events
+    val clients get() = view.clients
+    val milestones get() = view.milestones
+    val crew get() = view.crew
+    val inventory get() = view.inventory
+    val tasks get() = view.tasks
+    val sentReminders get() = view.reminders
+    val expenses get() = view.expenses
+    val enquiries get() = view.enquiries
+    val packages get() = view.packages
+    val changeRequests get() = view.changeRequests
+
+    fun event(id: String) = view.event(id)
+    fun client(id: String) = view.client(id)
+    fun clientFor(e: Event) = view.clientFor(e)
+    fun member(id: String) = view.member(id)
+    fun item(id: String) = view.item(id)
+    fun enquiry(id: String) = view.enquiry(id)
+    fun milestonesFor(eventId: String) = view.milestonesFor(eventId)
+    fun expensesFor(eventId: String) = view.expensesFor(eventId)
+    fun remindersFor(milestoneId: String) = view.remindersFor(milestoneId)
+    fun pendingChangeRequest(eventId: String) = view.pendingChangeRequest(eventId)
+    fun changeRequest(id: String) = view.changeRequest(id)
+
+    val upcomingEvents get() = view.upcomingEvents
+    val completedEvents get() = view.completedEvents
+    val openEnquiries get() = view.openEnquiries
+    fun eventsOn(day: LocalDate) = view.eventsOn(day)
+    fun eventsInMonth(month: Int, year: Int) = view.eventsInMonth(month, year)
+    fun conflictsOn(day: LocalDate) = view.conflictsOn(day)
+    fun isConflicted(e: Event) = view.isConflicted(e)
+    val seasonConflict get() = view.seasonConflict
+    fun crewOnDuty(day: LocalDate) = view.crewOnDuty(day)
+
+    fun paymentState(e: Event) = view.paymentState(e)
+    fun collected(eventId: String) = view.collected(eventId)
+    fun balanceDue(eventId: String) = view.balanceDue(eventId)
+    fun overdueAmount(eventId: String) = view.overdueAmount(eventId)
+    val openMilestones get() = view.openMilestones
+    val overdue get() = view.overdue
+    val dueThisWeek get() = view.dueThisWeek
+    val upcomingMilestones get() = view.upcomingMilestones
+    val totalOutstanding get() = view.totalOutstanding
+    val overdueTotal get() = view.overdueTotal
+    val eventsWithOpenMoney get() = view.eventsWithOpenMoney
+    val overdueSurnames get() = view.overdueSurnames
+    val lifetimeValue get() = view.lifetimeValue
+    fun stats(c: Client) = view.stats(c)
+    fun attendanceFor(eventId: String) = view.attendanceFor(eventId)
+    fun assignedCrew(eventId: String) = view.assignedCrew(eventId)
+    val season: SeasonSummary get() = view.season
 
     // MARK: Money
-
-    fun paymentState(e: Event): PaymentState {
-        val ms = milestonesFor(e.id)
-        return when {
-            ms.any { it.effectiveStatus == MilestoneStatus.OVERDUE } -> PaymentState.OVERDUE
-            ms.isNotEmpty() && ms.all { it.status == MilestoneStatus.PAID } -> PaymentState.PAID
-            ms.any { it.status == MilestoneStatus.PAID } -> PaymentState.PARTIAL
-            else -> PaymentState.PENDING
-        }
-    }
-    fun collected(eventId: String) = milestonesFor(eventId).filter { it.status == MilestoneStatus.PAID }.sumOf { it.amount }
-    fun balanceDue(eventId: String) = milestonesFor(eventId).filter { it.isOpen }.sumOf { it.amount }
-    fun overdueAmount(eventId: String) = milestonesFor(eventId).filter { it.effectiveStatus == MilestoneStatus.OVERDUE }.sumOf { it.amount }
-
-    val openMilestones get() = milestones.filter { it.isOpen && event(it.eventId)?.status != EventStatus.CANCELLED }.sortedBy { it.due }
-    val overdue get() = openMilestones.filter { it.effectiveStatus == MilestoneStatus.OVERDUE }.sortedBy { event(it.eventId)?.day ?: it.due }
-    val dueThisWeek get() = openMilestones.filter { it.effectiveStatus != MilestoneStatus.OVERDUE && it.due in Cal.thisWeek }
-    val upcomingMilestones get() = openMilestones.filter { it.effectiveStatus != MilestoneStatus.OVERDUE && it !in dueThisWeek }
-    val totalOutstanding get() = openMilestones.sumOf { it.amount }
-    val overdueTotal get() = overdue.sumOf { it.amount }
-    val eventsWithOpenMoney get() = openMilestones.map { it.eventId }.toSet().size
-    val overdueSurnames get() = overdue.sortedByDescending { it.amount }.mapNotNull { event(it.eventId)?.surname }.distinct().joinToString(", ")
 
     fun recordPayment(milestoneId: String, amount: Int, method: PaymentMethod, date: LocalDate, reference: String?) {
         var m = milestones.firstOrNull { it.id == milestoneId } ?: return
@@ -198,15 +249,12 @@ class AppStore(app: Application) : AndroidViewModel(app) {
         save(WriteOp.Set(Coll.reminders, r.id, Mapping.of(r)), "Sent on ${channel.label}")
     }
     fun reminderMessage(m: Milestone, tone: ReminderTone): String {
-        val e = event(m.eventId) ?: return ""; val c = clientFor(e) ?: return ""; val v = vendor ?: return ""
-        val first = c.firstName; val amount = Fmt.inr(m.amount); val due = Fmt.dayMonthLong(m.due); val eventDate = Fmt.dayMonthLong(e.day); val name = m.name.lowercase()
-        val pay = if (v.upi.isEmpty()) "by bank transfer" else "by UPI to ${v.upi} or by bank transfer"
-        return when (tone) {
-            ReminderTone.GENTLE -> "Hi $first, hope the preparations are going well! Just a gentle nudge — the $name of $amount for the ${e.type.word} was due on $due. Whenever convenient this week works. Thanks so much — ${v.ownerFirstName}, ${v.businessName}"
-            ReminderTone.STANDARD -> "Hi $first, a reminder that the $name of $amount for the ${e.type.word} on $eventDate was due on $due. You can pay $pay. Thank you — ${v.ownerFirstName}, ${v.businessName}"
-            ReminderTone.FIRM -> "$first, the $name of $amount for the ${e.type.word} on $eventDate is ${Fmt.daysLate(m.due)} days overdue. We need it cleared by tomorrow to hold the crew and inventory for your date. Please pay ${if (v.upi.isEmpty()) "today" else "by UPI to ${v.upi} today"}. — ${v.ownerFirstName}, ${v.businessName}"
-        }
+        val e = event(m.eventId) ?: return ""
+        val c = clientFor(e) ?: return ""
+        val v = vendor ?: return ""
+        return reminders.compose(tone, m, e, c, v)
     }
+
     fun addExpense(eventId: String, name: String, detail: String, amount: Int) { val x = Expense(Cal.newId(), eventId, name, detail, amount); save(WriteOp.Set(Coll.expenses, x.id, Mapping.of(x)), "Expense added") }
     fun deleteExpense(id: String) = save(WriteOp.Delete(Coll.expenses, id))
 
@@ -237,30 +285,20 @@ class AppStore(app: Application) : AndroidViewModel(app) {
     }
     fun declineChangeRequest(id: String) { val cr = changeRequest(id) ?: return; save(WriteOp.Set(Coll.changeRequests, id, Mapping.of(cr.copy(status = ChangeRequestStatus.DECLINED))), "Change declined") }
     /** Builds a change request from a guest delta using the vendor's actual holds and roster (B6 reasoning). */
+    /**
+     * Builds and stores a costed change request. The pricing lives in [ChangeRequestPricing] so the rates are
+     * visible and testable; this method only decides which helpers are actually free on the day.
+     */
     fun logChangeRequest(eventId: String, guestsDelta: Int, via: String): ChangeRequest? {
-        val e = event(eventId) ?: return null; val day = e.day
-        val impacts = mutableListOf<ChangeImpact>(); var added = 0
-        inventory.firstOrNull { it.name.contains("chair", true) }?.let { chairs ->
-            val c = chairs.committed(day); val new = c + guestsDelta
-            if (new > chairs.total) { val hire = new - chairs.total; added += hire * 40; impacts += ChangeImpact(chairs.name, "All ${chairs.total} held · hire $hire more", "+$guestsDelta · ${Fmt.inr(hire * 40)}", true, "inventory") }
-            else impacts += ChangeImpact(chairs.name, "$c → $new of ${chairs.total} held on ${Fmt.dayMonth(day)}", "+$guestsDelta", false, "inventory")
+        val e = event(eventId) ?: return null
+        val freeHelpers = crew.filter { m ->
+            m.role == CrewRole.HELPER && m.bookings.none { id -> event(id)?.day == e.day }
         }
-        inventory.firstOrNull { it.name.contains("table", true) }?.let { tables ->
-            val extra = ceil(guestsDelta / 10.0).toInt(); val c = tables.committed(day); val new = c + extra
-            if (new > tables.total) { val hire = new - tables.total; added += hire * 400; impacts += ChangeImpact(tables.name, "All ${tables.total} held · hire $hire more", "+$extra · ${Fmt.inr(hire * 400)}", true, "inventory") }
-            else impacts += ChangeImpact(tables.name, "$c → $new of ${tables.total} held", "+$extra", false, "inventory")
-        }
-        val helpers = maxOf(1, guestsDelta / 50)
-        val free = crew.filter { it.role == CrewRole.HELPER && it.bookings.none { id -> event(id)?.let { o -> overlap(e, o) || o.day == e.day } == true } }.take(helpers)
-        val helperCost = helpers * (free.firstOrNull()?.dayRate ?: CrewRole.HELPER.defaultDayRate); added += helperCost
-        impacts += ChangeImpact("Helpers", if (free.isEmpty()) "Hire $helpers day-wage" else free.joinToString(", ") { it.firstName }, "+$helpers · ${Fmt.inr(helperCost)}", free.size < helpers, "people")
-        if (impacts.any { it.isShort } || guestsDelta >= 150) { added += 4_500; impacts += ChangeImpact("Transport", "Second truck, chairs and tables", Fmt.inr(4_500), false, "transport") }
-        val perGuest = maxOf(200, if (e.guests == 0) 350 else (e.quoted / e.guests) / 4)
-        val revised = ((e.quoted + guestsDelta * perGuest) / 1000) * 1000
-        val cr = ChangeRequest(Cal.newId(), e.id, "Add $guestsDelta guests. ${e.guests} becomes ${e.guests + guestsDelta}.", guestsDelta, impacts, added, revised, perGuest, ChangeRequestStatus.PENDING, Cal.today, via)
+        val cr = ChangeRequestPricing.price(e, guestsDelta, inventory, freeHelpers, via)
         save(WriteOp.Set(Coll.changeRequests, cr.id, Mapping.of(cr)))
         return cr
     }
+
     fun cancelEvent(id: String) {
         val e = event(id) ?: return
         val ops = mutableListOf<WriteOp>(WriteOp.Set(Coll.events, id, Mapping.of(e.copy(status = EventStatus.CANCELLED))))
@@ -270,39 +308,43 @@ class AppStore(app: Application) : AndroidViewModel(app) {
     }
     fun markCompleted(id: String) { val e = event(id) ?: return; save(WriteOp.Set(Coll.events, id, Mapping.of(e.copy(status = EventStatus.COMPLETED))), "${e.name} marked completed") }
 
+    /**
+     * Books an event from the create-flow draft: reuses an existing client when the surname matches, opens the
+     * advance and balance milestones, and closes the originating enquiry. Defaults come from [EventDefaults].
+     */
     fun createEvent(d: EventDraft): Event? {
-        val type = d.type ?: return null; val date = d.date ?: return null
-        val clientName = d.clientName.trim(); if (clientName.isEmpty()) return null
+        val clientName = d.clientName.trim()
+        if (clientName.isEmpty() || d.type == null || d.date == null) return null
         val surname = clientName.substringAfterLast(' ')
-        val hue = EventHue.entries[events.size % 4]
         val ops = mutableListOf<WriteOp>()
-        val existing = clients.firstOrNull { it.surname.equals(surname, true) }
-        val clientId = if (existing != null) { ops += WriteOp.Set(Coll.clients, existing.id, Mapping.of(existing.copy(isRepeat = true, phone = d.phone.ifBlank { existing.phone }))); existing.id }
-        else Cal.newId().also { ops += WriteOp.Set(Coll.clients, it, Mapping.of(Client(it, clientName, d.phone, false, (clients.size % 8) + 1, Cal.today))) }
-        val start = date.atTime(18, 0); val end = start.plusHours(5)
-        val parts = d.venue.split(",").map { it.trim() }
-        val e = Event(Cal.newId(), "$surname ${type.word}", clientId, type, start, end, Venue(parts.firstOrNull() ?: d.venue, parts.getOrNull(1) ?: ""), d.guests, d.quoted, hue,
-            EventStatus.UPCOMING, 0, maxOf(6, d.guests / 40), null, null, Cal.today)
+
+        val existing = clients.firstOrNull { it.surname.equals(surname, ignoreCase = true) }
+        val clientId = if (existing != null) {
+            ops += WriteOp.Set(Coll.clients, existing.id, Mapping.of(existing.copy(isRepeat = true, phone = d.phone.ifBlank { existing.phone })))
+            existing.id
+        } else {
+            Cal.newId().also { id ->
+                ops += WriteOp.Set(Coll.clients, id, Mapping.of(Client(id, clientName, d.phone, false, (clients.size % AVATAR_COUNT) + 1, Cal.today)))
+            }
+        }
+
+        val e = EventDefaults.newEvent(d, clientId, surname, events.size) ?: return null
         ops += WriteOp.Set(Coll.events, e.id, Mapping.of(e))
-        val advance = d.quoted / 4
-        val m1 = Milestone(Cal.newId(), e.id, "Booking advance", advance, Cal.todayDate, MilestoneStatus.PENDING, MilestoneKind.ADVANCE)
-        val m2 = Milestone(Cal.newId(), e.id, "Balance", d.quoted - advance, date, MilestoneStatus.PENDING, MilestoneKind.BALANCE)
-        ops += WriteOp.Set(Coll.milestones, m1.id, Mapping.of(m1)); ops += WriteOp.Set(Coll.milestones, m2.id, Mapping.of(m2))
+
+        val advance = EventDefaults.advance(d.quoted)
+        val bookingAdvance = Milestone(Cal.newId(), e.id, "Booking advance", advance, Cal.todayDate, MilestoneStatus.PENDING, MilestoneKind.ADVANCE)
+        val balance = Milestone(Cal.newId(), e.id, "Balance", d.quoted - advance, d.date, MilestoneStatus.PENDING, MilestoneKind.BALANCE)
+        ops += WriteOp.Set(Coll.milestones, bookingAdvance.id, Mapping.of(bookingAdvance))
+        ops += WriteOp.Set(Coll.milestones, balance.id, Mapping.of(balance))
+
         d.fromEnquiryId?.let { q -> enquiry(q)?.let { ops += WriteOp.Set(Coll.enquiries, it.id, Mapping.of(it.copy(status = EnquiryStatus.CONVERTED))) } }
+
         save(ops, "${e.name} created")
         replaceDraft(EventDraft())
         return e
     }
+
     fun updateClient(c: Client) = save(WriteOp.Set(Coll.clients, c.id, Mapping.of(c)), "Saved")
-
-    // MARK: Clients
-
-    data class ClientStats(val eventCount: Int, val lifetimeValue: Int, val nextEventDate: LocalDate?)
-    fun stats(c: Client): ClientStats {
-        val evs = events.filter { it.clientId == c.id && it.status != EventStatus.CANCELLED }
-        return ClientStats(evs.size, evs.sumOf { it.quoted }, evs.filter { it.status == EventStatus.UPCOMING && it.day >= Cal.todayDate }.minOfOrNull { it.day })
-    }
-    val lifetimeValue get() = events.filter { it.status != EventStatus.CANCELLED }.sumOf { it.quoted }
 
     // MARK: Enquiries / packages
 
@@ -313,13 +355,11 @@ class AppStore(app: Application) : AndroidViewModel(app) {
 
     // MARK: Crew
 
-    fun attendanceFor(eventId: String) = data.attendance.firstOrNull { it.id == eventId }?.states.orEmpty()
     fun cycleAttendance(eventId: String, crewId: String) {
         val a = data.attendance.firstOrNull { it.id == eventId } ?: Attendance(eventId, emptyMap())
         val next = (a.states[crewId] ?: AttendanceState.CONFIRMED).next
         save(WriteOp.Set(Coll.attendance, eventId, Mapping.of(a.copy(states = a.states + (crewId to next)))))
     }
-    fun assignedCrew(eventId: String) = crew.filter { eventId in it.bookings }
     fun toggleAssignment(crewId: String, eventId: String) {
         val m = member(crewId) ?: return; val e = event(eventId) ?: return
         val on = eventId in m.bookings
@@ -334,10 +374,8 @@ class AppStore(app: Application) : AndroidViewModel(app) {
     }
     fun saveCrewMember(m: CrewMember) = save(WriteOp.Set(Coll.crew, m.id, Mapping.of(m)), "Saved")
     fun deleteCrewMember(id: String) = save(WriteOp.Delete(Coll.crew, id))
-    fun crewConflictNote(e: Event): String? {
-        val others = eventsOn(e.day).filter { it.id != e.id }; if (others.isEmpty()) return null
-        return crew.firstOrNull { m -> e.id in m.bookings && m.bookings.any { id -> others.any { it.id == id } } }?.let { "${it.firstName}'s team conflicted" }
-    }
+    /** The member double-booked across this event and another that day, or null when the day is clean. */
+    fun conflictedMember(e: Event) = view.conflictedMember(e)
 
     // MARK: Inventory
 
@@ -353,14 +391,4 @@ class AppStore(app: Application) : AndroidViewModel(app) {
         return if (holds.isEmpty()) e.inventorySummary ?: "Not planned yet" else holds.take(3).joinToString(" · ")
     }
 
-    // MARK: Season
-
-    data class SeasonSummary(val booked: Int, val count: Int, val months: List<Pair<String, Int>>, val label: String)
-    val season: SeasonSummary
-        get() {
-            val start = Cal.seasonStart(Cal.todayDate); val end = start.plusMonths(5)
-            val inSeason = events.filter { it.status != EventStatus.CANCELLED && it.day >= start && it.day < end }
-            val months = (0 until 5).map { i -> val m = start.plusMonths(i.toLong()); Fmt.monthShort(m) to inSeason.filter { it.start.monthValue == m.monthValue && it.start.year == m.year }.sumOf { it.quoted } }
-            return SeasonSummary(inSeason.sumOf { it.quoted }, inSeason.size, months, Cal.seasonLabel(Cal.todayDate))
-        }
 }
